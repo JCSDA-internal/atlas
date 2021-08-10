@@ -111,13 +111,13 @@ PointTXY CubedSphereJacobian::txyLocalToGlobal(const PointTXY &txyLocal) const {
 PointTIJ CubedSphereJacobian::tijLocalToGlobal(const PointTIJ &tijLocal) const {
 
   // Convert ij to xy.
-  const auto txyLocal = this->tijToTxy(tijLocal);
+  const auto txyLocal = tijToTxy(tijLocal);
 
   // Convert local xy to global xy.
-  const auto txyGlobal = this->txyLocalToGlobal(txyLocal);
+  const auto txyGlobal = txyLocalToGlobal(txyLocal);
 
   // Return global ij.
-  return this->txyToTij(txyGlobal);
+  return txyToTij(txyGlobal);
 }
 
 }

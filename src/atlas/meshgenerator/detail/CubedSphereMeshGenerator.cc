@@ -309,125 +309,94 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
   const auto jacs = CubedSphereJacobian(csGrid);
 
-  // Define node record.
+  // Define global node record.
   // This currently keeps track of more information than we probably need.
   // This may be reduced once we've implemented halos.
-  struct NodeRecord {
-    gidx_t  globalIdx{undefinedGlobalIdx};  // Global ID,
-    idx_t   localIdx{undefinedIdx};         // Local ID.
-    idx_t   localPart{undefinedIdx};        // Partition node is on.
-    idx_t   remoteIdx{undefinedIdx};        // Local ID of owned node.
-    idx_t   remotePart{undefinedIdx};       // Partion that owned node is on.
-    idx_t   t{undefinedIdx};                // Tile that owned node is on.
-    bool    ghost{false};                   // True if node is a ghost.
-    PointXY localXy{};                      // Position of this node.
-    PointXY remoteXy{};                     // Position of owned node.
+  struct GlobalNode {
+    idx_t             globalIdx{undefinedIdx};  // Global ID,
+    idx_t             part{undefinedIdx};       // Partition node is on.
+    idx_t             localIdx{undefinedIdx};   // Local ID of owned node.
+    const GlobalNode* remoteNode{};             // Pointer to remote node.
   };
 
   // Make list of all nodes.
-  auto globalNodes = std::vector<NodeRecord>(idx2st(nNodesAll));
+  auto globalNodes = std::vector<GlobalNode>(idx2st(nNodesAll));
 
   // Set counters for local node indices.
   auto nodeLocalIdxCount = std::vector<idx_t>(nParts, 0);
 
   // Set counter for global indices.
-  gidx_t nodeGlobalIdxCount = 1;
+  idx_t nodeGlobalOwnedIdxCount = 1;
+  idx_t nodeGlobalGhostIdxCount = nNodesUnique + 1;
 
   // Make a list of type-A ghost nodes and process later.
-  auto typeAGhostNodes = std::vector<NodeRecord*>{};
+  auto typeAGhostNodes = std::vector<GlobalNode*>{};
 
   for (idx_t t = 0; t < nTiles; ++t) {
     for (idx_t j = 0; j < N + 1; ++j) {
       for (idx_t i = 0; i < N + 1; ++i) {
 
-        // Get node.
+        // Get this node.
         auto& node = globalNodes[getNodeIdx(t, j, i)];
+
+        // Get owning node
+        const auto ownerTij = jacs.tijLocalToGlobal(PointTIJ(t, i, j));
+        const auto ownerIdx =
+          getNodeIdx(ownerTij.t(), ownerTij.jRound(), ownerTij.iRound());
+        const auto& ownerNode = globalNodes[ownerIdx];
 
         // Get owning cell.
         const auto& cell = globalCells[getCellIdx(t, j - 1, i - 1)];
 
-        // Get node position from ij
-        node.localXy = jacs.tijToTxy(PointTIJ(t, i, j)).xy();
+        // Determine node ownership.
+        if (&node == &ownerNode) {
 
-        // Get remote xy from tile class and local t.
-        node.remoteXy = csTiles.tileCubePeriodicity(node.localXy, t);
+          // Set partition.
+          node.part = cell.part;
 
-        // Local taken from owning cell.
-        node.localPart = cell.part;
-
-        // Get remote t from tile class.
-        node.t = csTiles.tileFromXY(node.remoteXy.data());
-
-        // Node is a type-A ghost if local t and remote t differ.
-        // Otherwise node is owned.
-        if (t == node.t) {
-
-          // Owned point.
+          // Owner node. Set local index.
+          node.localIdx = nodeLocalIdxCount[idx2st(node.part)]++;
 
           // Set global index.
-          node.globalIdx = nodeGlobalIdxCount++;
-
-          // Set local index.
-          node.localIdx = nodeLocalIdxCount[idx2st(node.localPart)]++;
-
-          // Remote partition same as local.
-          node.remotePart = node.localPart;
-
-          // Remote index same as local.
-          node.remoteIdx = node.localIdx;
+          node.globalIdx = nodeGlobalOwnedIdxCount++;
 
         } else {
 
-          // Type-A ghost. Deal with this later.
-          typeAGhostNodes.push_back(&node);
+          // Ghost node on tile edge. Point to owner.
+          node.remoteNode = &ownerNode;
+
+          // Set global index.
+          node.globalIdx = nodeGlobalGhostIdxCount++;
 
         }
+
       }
     }
   }
 
-  ATLAS_ASSERT(nodeGlobalIdxCount == nNodesUnique + 1);
+  ATLAS_ASSERT(nodeGlobalOwnedIdxCount == nNodesUnique + 1);
+  ATLAS_ASSERT(nodeGlobalGhostIdxCount == nNodesAll + 1);
   ATLAS_ASSERT(idxSum(nodeLocalIdxCount) == nNodesUnique);
 
-  // Deal with type-A ghost nodes.
-  for (auto* nodePtr : typeAGhostNodes) {
+  enum class NodeType {
+    OWNED,
+    GHOST_A,
+    GHOST_B,
+  };
 
-    // Set global index.
-    nodePtr->globalIdx = nodeGlobalIdxCount++;
+  // Define local node record.
+  struct LocalNode {
 
-    // Set local index.
-    nodePtr->localIdx = nodeLocalIdxCount[idx2st(nodePtr->localPart)]++;
+    NodeType      type{};
+    idx_t         globalIdx{};
+    idx_t         remoteIdx{undefinedGlobalIdx};
+    idx_t         part{undefinedGlobalIdx};
+    idx_t*        localIdx;
+    PointXY       xyLocal{};
+    PointXY       xyGlobal{};
+  };
 
-    // Get jacobian
-    const auto tij = jacs.txyToTij(PointTXY(nodePtr->t, nodePtr->remoteXy));
-    const auto i = tij.iRound();
-    const auto j = tij.jRound();
-
-
-    // Get remote node.
-    const auto& remoteNode = globalNodes[getNodeIdx(nodePtr->t, j, i)];
-
-    // Set partition and remote index.
-    nodePtr->remotePart = remoteNode.localPart;
-    nodePtr->remoteIdx = remoteNode.localIdx;
-
-    // Node is a ghost.
-    nodePtr->ghost = true;
-
-    // Check that remote index is now defined.
-    ATLAS_ASSERT(nodePtr->remoteIdx != undefinedIdx);
-
-  }
-
-  ATLAS_ASSERT(nodeGlobalIdxCount == nNodesAll + 1);
-  ATLAS_ASSERT(idxSum(nodeLocalIdxCount) == nNodesAll);
-
-  // ---------------------------------------------------------------------------
-  // 4. LOCATE AND COUNT LOCAL TYPE-B GHOST NODES.
-  // ---------------------------------------------------------------------------
-
-  // Make list of local nodes (this simplifies part 5).
-  auto localNodes = std::vector<const NodeRecord*>{};
+  auto localNodes = std::vector<LocalNode>{};
 
   // Loop over all possible local nodes.
   for (idx_t t = 0; t < nTiles; ++t) {
@@ -439,7 +408,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
       for (idx_t i = bounds.iBegin; i < bounds.iEnd + 1; ++i) {
 
         // Get node.
-        auto& node = globalNodes[getNodeIdx(t, j, i)];
+        auto& globalNode = globalNodes[getNodeIdx(t, j, i)];
+        auto localNode = LocalNode{};
 
         // Get four neighbouring cells of node. (cell0 is owner of node).
         const auto& cell0 = globalCells[getCellIdx(t, j - 1, i - 1)];
@@ -449,31 +419,83 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
         if (cell0.part == st2idx(thisPart)) {
 
-          // Check that node-cell partitions match.
-          ATLAS_ASSERT(node.localPart == cell0.part);
+          // Node is either owned, or a ghost on a tile edge.
+          if (!globalNode.remoteNode) {
 
-          // Node is either owned or Type-A ghost.
-          localNodes.push_back(&node);
+            // Node is owned.
+            localNode.type = NodeType::OWNED;
+            localNode.globalIdx = globalNode.globalIdx;
+            localNode.remoteIdx = globalNode.localIdx;
+            localNode.part      = globalNode.part;
+            localNode.localIdx  = &globalNode.localIdx;
+
+            const auto txyLocal = jacs.tijToTxy(PointTIJ(t, i, j));
+
+            localNode.xyLocal   = txyLocal.xy();
+            localNode.xyGlobal  = localNode.xyLocal;
+
+            localNodes.push_back(localNode);
+
+          } else {
+
+            // Node is a ghost on a tile edge.
+            localNode.type = NodeType::GHOST_A;
+            localNode.globalIdx = globalNode.globalIdx;
+            localNode.remoteIdx = globalNode.remoteNode->localIdx;
+            localNode.part      = globalNode.remoteNode->part;
+            localNode.localIdx  = &globalNode.localIdx;
+
+            const auto txyLocal = jacs.tijToTxy(PointTIJ(t, i, j));
+
+            localNode.xyLocal   = txyLocal.xy();
+            localNode.xyGlobal  = jacs.txyLocalToGlobal(txyLocal).xy();
+
+            localNodes.push_back(localNode);
+
+          }
 
         } else if (cell1.part == st2idx(thisPart)
                 || cell2.part == st2idx(thisPart)
                 || cell3.part == st2idx(thisPart)) {
 
-          // Node has a non-owning neighbouring cell and is a type-B ghost.
+          // Node is a ghost on a partition edge.
+          localNode.type = NodeType::GHOST_B;
+          localNode.globalIdx = globalNode.globalIdx;
+          localNode.remoteIdx = globalNode.localIdx;
+          localNode.part      = globalNode.part;
+          localNode.localIdx  = &globalNode.localIdx;
 
-          // Change local index to match this partition.
-          node.localPart = st2idx(thisPart);
-          node.localIdx = nodeLocalIdxCount[thisPart]++;
-          node.ghost = true;
+          const auto txyLocal = jacs.tijToTxy(PointTIJ(t, i, j));
 
-          // Check remote index is defined.
-          ATLAS_ASSERT(node.remoteIdx != undefinedIdx);
+          localNode.xyLocal   = txyLocal.xy();
+          localNode.xyGlobal  = jacs.txyLocalToGlobal(txyLocal).xy();
 
-          localNodes.push_back(&node);
+          localNodes.push_back(localNode);
 
         }
+
       }
     }
+  }
+
+  // Ghost nodes are mixed in with owned nodes. Sort by node type to correct.
+  // Note: value of localIdx for owned nodes should match element number of
+  // localNodes vector. localIdx value will be overwritten for non-owned nodes.
+  std::stable_sort(localNodes.begin(), localNodes.end(),
+    [](const LocalNode& nodeA, const LocalNode& nodeB){
+      return nodeA.type < nodeB.type;
+    });
+
+  // Check/Set local indices.
+  idx_t nodeLocalIdx = 0;
+  for (auto& node : localNodes) {
+
+    if (node.type == NodeType::OWNED) {
+      ATLAS_ASSERT(*node.localIdx == nodeLocalIdx);
+    } else {
+      *node.localIdx = nodeLocalIdx;
+    }
+    ++nodeLocalIdx;
   }
 
   // ---------------------------------------------------------------------------
@@ -481,7 +503,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // ---------------------------------------------------------------------------
 
   // Resize nodes.
-  mesh.nodes().resize(nodeLocalIdxCount[thisPart]);
+  mesh.nodes().resize(st2idx(localNodes.size()));
 
   // Get field views
   auto nodesGlobalIdx = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
@@ -493,35 +515,48 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   auto nodesFlags     = array::make_view<int, 1>(mesh.nodes().flags());
 
   // Set fields.
-  for (const auto* nodePtr : localNodes) {
-
-    // Get local index.
-    const auto localIdx = nodePtr->localIdx;
+  nodeLocalIdx = 0;
+  for (const auto node : localNodes) {
 
     // Set global index.
-    nodesGlobalIdx(localIdx) = nodePtr->globalIdx;
+    nodesGlobalIdx(nodeLocalIdx) = node.globalIdx;
 
     // Set node remote index.
-    nodesRemoteIdx(localIdx) = nodePtr->remoteIdx;
+    nodesRemoteIdx(nodeLocalIdx) = node.remoteIdx;
 
     // Set node partition.
-    nodesPart(localIdx) = nodePtr->remotePart;
+    nodesPart(nodeLocalIdx) = node.part;
 
     // Set xy.
-    nodesXy(localIdx, XX) = nodePtr->localXy.x();
-    nodesXy(localIdx, YY) = nodePtr->localXy.y();
+    nodesXy(nodeLocalIdx, XX) = node.xyLocal.x();
+    nodesXy(nodeLocalIdx, YY) = node.xyLocal.y();
 
     // Set lon-lat.
-    const auto lonLat = csProjection->lonlat(nodePtr->remoteXy);
-    nodesLonLat(localIdx, LON) = lonLat.lon();
-    nodesLonLat(localIdx, LAT) = lonLat.lat();
+    const auto lonLat = csProjection->lonlat(node.xyGlobal);
+    nodesLonLat(nodeLocalIdx, LON) = lonLat.lon();
+    nodesLonLat(nodeLocalIdx, LAT) = lonLat.lat();
 
-    // Set ghost flag.
-    nodesGhost(localIdx) = nodePtr->ghost;
+    // Set flags.
+    Topology::reset(nodesFlags(nodeLocalIdx));
+    switch(node.type) {
 
-    // Set general flags.
-    Topology::reset(nodesFlags(localIdx));
-    if (nodePtr->ghost) Topology::set(nodesFlags(localIdx), Topology::GHOST);
+      case NodeType::OWNED : {
+        nodesGhost(nodeLocalIdx) = 0;
+        break;
+      }
+      case NodeType::GHOST_A : {
+        nodesGhost(nodeLocalIdx) = 1;
+        Topology::set(nodesFlags(nodeLocalIdx), Topology::GHOST);
+        break;
+      }
+      case NodeType::GHOST_B : {
+        nodesGhost(nodeLocalIdx) = 1;
+        Topology::set(nodesFlags(nodeLocalIdx), Topology::GHOST);
+        break;
+      }
+    }
+
+    ++nodeLocalIdx;
   }
 
   // ---------------------------------------------------------------------------
@@ -561,12 +596,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
           const auto& node1 = globalNodes[getNodeIdx(t, j    , i + 1)];
           const auto& node2 = globalNodes[getNodeIdx(t, j + 1, i + 1)];
           const auto& node3 = globalNodes[getNodeIdx(t, j + 1, i    )];
-
-          // Check nodes partitions match.
-          ATLAS_ASSERT(node0.localPart == cell.part);
-          ATLAS_ASSERT(node1.localPart == cell.part);
-          ATLAS_ASSERT(node2.localPart == cell.part);
-          ATLAS_ASSERT(node3.localPart == cell.part);
 
           const auto quadNodeIdx = std::array<idx_t, 4> {
             node0.localIdx, node1.localIdx, node2.localIdx, node3.localIdx};

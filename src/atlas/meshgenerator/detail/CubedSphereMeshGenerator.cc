@@ -28,6 +28,7 @@
 #include "atlas/mesh/Nodes.h"
 #include "atlas/meshgenerator/detail/CubedSphereMeshGenerator.h"
 #include "atlas/meshgenerator/detail/MeshGeneratorFactory.h"
+#include "atlas/meshgenerator/detail/cubedsphere/CubedSphereUtility.h"
 #include "atlas/parallel/mpi/mpi.h"
 #include "atlas/projection/detail/CubedSphereProjectionBase.h"
 #include "atlas/runtime/Exception.h"
@@ -37,8 +38,6 @@
 
 #define DEBUG_OUTPUT 0
 #define DEBUG_OUTPUT_DETAIL 0
-
-using Topology = atlas::mesh::Nodes::Topology;
 
 namespace atlas {
 namespace meshgenerator {
@@ -183,6 +182,10 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // 1. PREAMBLE
   // ---------------------------------------------------------------------------
 
+  using Topology = atlas::mesh::Nodes::Topology;
+
+  using namespace detail::cubedsphere;
+
   // Get dimensions of grid
   const auto N      = csGrid.N();
   const auto nTiles = csGrid.GetNTiles();
@@ -208,10 +211,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // Get partition information.
   const auto nParts =   mpi::comm().size();
   const auto thisPart = mpi::comm().rank();
-
-  // Set some casting helper functions to avoid annoying warnings.
-  const auto st2idx = [](size_t i){return static_cast<idx_t>(i);};
-  const auto idx2st = [](idx_t i){return static_cast<size_t>(i);};
 
   // Define an index counter.
   const auto idxSum = [](const std::vector<idx_t>& idxCounts) -> idx_t {
@@ -245,7 +244,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     gidx_t   globalIdx{undefinedGlobalIdx}; // Global ID.
     idx_t   localIdx{undefinedIdx};         // Local ID.
     idx_t   part{undefinedIdx};             // Partition.
-    PointXY xy{};                           // Position.
   };
 
   // Define ij bounding box for each face (this partition only).
@@ -264,7 +262,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
   // Set xy and tji grid iterators.
   auto tjiIt = csGrid.tij().begin();
-  auto xyIt = csGrid.xy().begin();
 
   // Set counters for cell local indices.
   auto cellIdxCount = std::vector<idx_t>(nParts, 0);
@@ -290,9 +287,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     // Set local index.
     cell.localIdx = cellIdxCount[idx2st(cell.part)]++;
 
-    // Set xy
-    cell.xy = *xyIt;
-
     if (cell.part == st2idx(thisPart)) {
 
       // Keep track of local (t, j, i) bounds.
@@ -305,7 +299,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     }
     // Increment iterators.
     ++tjiIt;
-    ++xyIt;
   }
 
   ATLAS_ASSERT(idxSum(cellIdxCount) == nCells);
@@ -314,58 +307,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // 3. GLOBAL OWNED NODE AND TYPE-A GHOST NODE DISTRIBUTION
   // ---------------------------------------------------------------------------
 
-  // Define Jacobian of xy wrt ij for each tile so that we can easily
-  // switch between the two. This will be needed to set node xy positions
-  // and figure out the ij indices for type-A ghost nodes.
-  struct XyJacobian {
-    double dxByDi{};  // dx/di
-    double dxByDj{};  // dx/dj
-    double dyByDi{};  // dy/di
-    double dyByDj{};  // dy/dj
-    double diByDx{};  // di/dx
-    double diByDy{};  // di/dy
-    double djByDx{};  // dj/dx
-    double djByDy{};  // dj/dy
-    PointXY xy00{};   // xy coordinate of node(i = 0, j = 0).
-  };
-
-  // Calculate Jacobians.
-  idx_t t = 0;
-  auto jacs = std::vector<XyJacobian>{};
-  std::generate_n(std::back_inserter(jacs), nTiles, [&](){
-
-      // Initialise element.
-      auto jacElem = XyJacobian{};
-
-      // Get cell positions.
-      const auto& xy00 = globalCells[getCellIdx(t, 0, 0)].xy;
-      const auto& xy10 = globalCells[getCellIdx(t, 0, 1)].xy;
-      const auto& xy01 = globalCells[getCellIdx(t, 1, 0)].xy;
-
-      // Calculate Jacobian.
-      jacElem.dxByDi = xy10.x() - xy00.x();
-      jacElem.dxByDj = xy01.x() - xy00.x();
-      jacElem.dyByDi = xy10.y() - xy00.y();
-      jacElem.dyByDj = xy01.y() - xy00.y();
-
-      // Calculate inverse Jacobian.
-      const auto invDet =
-        1./(jacElem.dxByDi * jacElem.dyByDj - jacElem.dxByDj * jacElem.dyByDi);
-      jacElem.diByDx =  jacElem.dyByDj * invDet;
-      jacElem.diByDy = -jacElem.dxByDj * invDet;
-      jacElem.djByDx = -jacElem.dyByDi * invDet;
-      jacElem.djByDy =  jacElem.dxByDi * invDet;
-
-      // Extrapolate cell(t, 0, 0) xy to get node(t, 0, 0) xy.
-      jacElem.xy00 = PointXY{
-        xy00.x() - 0.5 * jacElem.dxByDi - 0.5 * jacElem.dxByDj,
-        xy00.y() - 0.5 * jacElem.dyByDi - 0.5 * jacElem.dyByDj
-      };
-
-      ++t;
-      return jacElem;
-
-    });
+  const auto jacs = CubedSphereJacobian(csGrid);
 
   // Define node record.
   // This currently keeps track of more information than we probably need.
@@ -404,15 +346,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
         // Get owning cell.
         const auto& cell = globalCells[getCellIdx(t, j - 1, i - 1)];
 
-        // Extrapolate local xy from cell centre.
-        // Nodes are +/- half a grid spacing relative to cells.
-        const auto di = i == 0 ? -0.5 : 0.5;
-        const auto dj = j == 0 ? -0.5 : 0.5;
-        const auto& jac = jacs[idx2st(t)];
-        node.localXy = PointXY{
-            cell.xy.x() + di * jac.dxByDi + dj * jac.dxByDj,
-            cell.xy.y() + di * jac.dyByDi + dj * jac.dyByDj
-          };
+        // Get node position from ij
+        node.localXy = jacs.tijToTxy(PointTIJ(t, i, j)).xy();
 
         // Get remote xy from tile class and local t.
         node.remoteXy = csTiles.tileCubePeriodicity(node.localXy, t);
@@ -463,16 +398,11 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     // Set local index.
     nodePtr->localIdx = nodeLocalIdxCount[idx2st(nodePtr->localPart)]++;
 
-    // Get jacobian.
-    const auto& jac = jacs[idx2st(nodePtr->t)];
+    // Get jacobian
+    const auto tij = jacs.txyToTij(PointTXY(nodePtr->t, nodePtr->remoteXy));
+    const auto i = tij.iRound();
+    const auto j = tij.jRound();
 
-    // Get actual i and j.
-    const auto dx = nodePtr->remoteXy.x() - jac.xy00.x();
-    const auto dy = nodePtr->remoteXy.y() - jac.xy00.y();
-    const auto i = static_cast<idx_t>(
-      std::round(dx * jac.diByDx + dy * jac.diByDy));
-    const auto j = static_cast<idx_t>(
-      std::round(dx * jac.djByDx + dy * jac.djByDy));
 
     // Get remote node.
     const auto& remoteNode = globalNodes[getNodeIdx(nodePtr->t, j, i)];

@@ -70,13 +70,14 @@ CubedSphereMeshGenerator::CubedSphereMeshGenerator(const eckit::Parametrisation&
 
 
 void CubedSphereMeshGenerator::configure_defaults() {
-  // This option sets number of parts the mesh will be split in.
+
+  // This option sets number of partitions.
   options.set( "nb_parts", mpi::size() );
 
   // This option sets the part that will be generated.
   options.set("part", mpi::rank());
 
-  // This options sets the number of halo elements around each part.
+  // This options sets the number of halo elements around each partition.
   options.set("halo", idx_t{1});
 
   // This options sets the default partitioner.
@@ -108,7 +109,8 @@ void CubedSphereMeshGenerator::generate(const Grid& grid, Mesh& mesh) const {
 
 // -----------------------------------------------------------------------------
 
-void CubedSphereMeshGenerator::generate(const Grid& grid, const grid::Distribution& distribution, Mesh& mesh) const {
+void CubedSphereMeshGenerator::generate(const Grid& grid,
+  const grid::Distribution& distribution, Mesh& mesh) const {
 
   // Check for correct grid and need for mesh
   ATLAS_ASSERT(!mesh.generated());
@@ -146,71 +148,74 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // CUBED SPHERE MESH GENERATOR
   // ---------------------------------------------------------------------------
   //
-  // Mesh generator creates a mesh by placing cells with centroid positions at
-  // grid xy coordinates. Nodes are then placed around cells by the generator.
+  // Mesh generator creates a cubed sphere mesh by generating individual meshes
+  // for each cubed sphere tile and then working out the correspondence between
+  // overlapping nodes and cells.
   //
-  // The node-ownership of cells is determined by the following rules:
+  // Meshgenerator places cell at each grid point on this partition. Halo
+  // cells are added to the mesh if options.get("halo") > 0. The halo cells may
+  // either be interior to the tile, or exterior. Interior halo cells share
+  // their xy coordinate and global ID with the corresponding cells on other
+  // partitions. Exterior halo cells have a unique global ID and their xy
+  // coordinates are extrapolated from the interior tile. The global IDs of non-
+  // halo cells match the global IDs of the cell-centre grid points.
+  //
+  // Nodes are added around cells. The nodes around interior cells are assigned
+  // an owner by the following rules:
   //    * node (i > 0, j > 0) is owned by cell (i - 1, j - 1)
   //    * node (i = 0, j > 0) is owned by cell (i    , j - 1)
   //    * node (i > 0, j = 0) is owned by cell (i - 1, j    )
   //    * node (i = 0, j = 0) is owned by cell (i    , j    )
   //
-  // In addtion, there are two types of ghost node that need to be added to the
-  // mesh:
-  //    * Type-A ghost nodes. These are added to an edge between two tiles. One
-  //      tile owns the nodes, the other tile has ghost nodes in the same place.
-  //      The ownership rules are determined the CubedSphereTiles class. These
-  //      nodes are defined globally and have their own unique global index.
-  //      Their placement and local indexing is unaffected by the partitioner.
-  //    * Type-B ghost nodes. These are added when a tile is partitioned. One
-  //      side of the partation boundary has cells which own the nodes
-  //      (see ownership rules above). The other side has ghost nodes. The
-  //      placement and indexing of these ghost nodes may vary with different
-  //      partitioners. The global index of these nodes are taken from their
-  //      owned counterparts on the other side of the partition boundary.
-  //
-  // Global indices of cells are the same as the grid point indices. Global
-  // indices of nodes first count the owned nodes, then the type-A ghost points.
-  //
-  // Local indices of cells follows the order of the local grid points. Local
-  // indces of the nodes first count the owned nodes, followed by type-A ghost
-  // nodes, followed by type-B ghost nodes.
+  // The partition of the owning cell determines the partition of the node.
+  // Ghost nodes are added to the mesh to complete cells at partition
+  // boundaries, cells exterior to the tiles, oron tile edges which do not
+  // own nodes.
   //
   // There are several stages to the mesh generator:
   //    1. Preamble.
   //    2. Define global cell distribution.
-  //    3. Define global owned node and type-A ghost node distribution.
-  //    4. Locate and count local type-B ghost nodes.
-  //    5. Assign nodes to mesh.
-  //    6. Assign cells to mesh.
-  //    7. Finalise.
+  //    3. Define global node distribution.
+  //    4. Locate local cells.
+  //    5. Locate local nodes
+  //    6. Assign nodes to mesh.
+  //    7. Assign cells to mesh.
+  //    8. Finalise.
 
   // ---------------------------------------------------------------------------
   // 1. PREAMBLE
+  //    Setup some general parameters of the mesh, as well as define useful
+  //    lambda functions.
   // ---------------------------------------------------------------------------
 
   using Topology = atlas::mesh::Nodes::Topology;
+  using atlas::array::make_datatype;
+  using atlas::array::make_shape;
 
   using namespace detail::cubedsphere;
 
   // Get dimensions of grid
   const auto N      = csGrid.N();
-  const auto nTiles = csGrid.GetNTiles();
 
   // Get size of halo.
-  idx_t halo = 0;
-  options.get("halo", halo);
+  idx_t nHalo = 0;
+  options.get("halo", nHalo);
 
-  // Set bounds for (i, j) based loops.
-  idx_t ijBegin = -halo;
-  idx_t ijEnd = N + halo;
+  // Set default bounds for (i, j) based loops.
+  idx_t ijBegin = -nHalo;
+  idx_t ijEnd = N + nHalo;
 
-  const auto nNodesUnique = nTiles * N * N + 2;
-  const auto nNodesGrid   = nTiles * (N + 2 * halo + 1) * (N + 2 * halo + 1);
-  const auto nNodesTotal  = nNodesGrid - nTiles * 4 * halo * halo;
-  const auto nCellsUnique = nTiles * N * N;
-  const auto nCellsGrid   = nTiles * (N + 2 * halo) * (N + 2 * halo);
-  const auto nCellsTotal  = nCellsGrid - nTiles * 4 * halo * halo;
+  // Unique non-halo nodes and cells.
+  const auto nNodesUnique = 6 * N * N + 2;
+  const auto nCellsUnique = 6 * N * N;
+
+  // Total array sizes (including invalid corner ijs).
+  const auto nNodesArray   = 6 * (N + 2 * nHalo + 1) * (N + 2 * nHalo + 1);
+  const auto nCellsArray   = 6 * (N + 2 * nHalo) * (N + 2 * nHalo);
+
+  // Total number of possible cells and nodes (including halos).
+  const auto nNodesTotal  = nNodesArray - 6 * 4 * nHalo * nHalo;
+  const auto nCellsTotal  = nCellsArray - 6 * 4 * nHalo * nHalo;
 
   Log::debug() << "Number of cells per tile edge = "
     << std::to_string(N) << std::endl;
@@ -224,7 +229,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     dynamic_cast<const projection::detail::CubedSphereProjectionBase*>(
     csGrid.projection().get());
   ATLAS_ASSERT(csProjection);
-  const auto csTiles = csProjection->getCubedSphereTiles();
 
   // Get partition information.
   const auto nParts =   mpi::comm().size();
@@ -238,34 +242,34 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   const auto getNodeIdx = [&](idx_t t, idx_t j, idx_t i, bool includeHalo){
 
     // Adjust bounds.
-    idx_t ijMin = includeHalo ? -halo : 0;
-    idx_t ijMax = includeHalo ? N + halo : N;
+    idx_t ijMin = includeHalo ? -nHalo : 0;
+    idx_t ijMax = includeHalo ? N + nHalo : N;
 
-    t = std::max(std::min(t, nTiles - 1), 0);
+    t = std::max(std::min(t, 5), 0);
     j = std::max(std::min(j, ijMax), ijMin);
     i = std::max(std::min(i, ijMax), ijMin);
 
-    const auto rowSize = (N + 2 * halo + 1);
+    const auto rowSize = (N + 2 * nHalo + 1);
     const auto tileSize = rowSize * rowSize;
 
-    return idx2st(t * tileSize + (j + halo) * rowSize + i + halo);
+    return idx2st(t * tileSize + (j + nHalo) * rowSize + i + nHalo);
   };
 
   // Helper functions to get cell idx from (t, j, i).
   const auto getCellIdx = [&](idx_t t, idx_t j, idx_t i, bool includeHalo){
 
     // Adjust bounds.
-    idx_t ijMin = includeHalo ? -halo : 0;
-    idx_t ijMax = includeHalo ? N + halo - 1: N - 1;
+    idx_t ijMin = includeHalo ? -nHalo : 0;
+    idx_t ijMax = includeHalo ? N + nHalo - 1: N - 1;
 
-    t = std::max(std::min(t, nTiles - 1), 0);
+    t = std::max(std::min(t, 5), 0);
     j = std::max(std::min(j, ijMax), ijMin);
     i = std::max(std::min(i, ijMax), ijMin);
 
-    const auto rowSize = (N + 2 * halo);
+    const auto rowSize = (N + 2 * nHalo);
     const auto tileSize = rowSize * rowSize;
 
-    return idx2st(t * tileSize + (j + halo) * rowSize + i + halo);
+    return idx2st(t * tileSize + (j + nHalo) * rowSize + i + nHalo);
 
   };
 
@@ -304,26 +308,20 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
       (i < 0     and j > N - 1);   // Top-left corner.
   };
 
-  const auto hackIndex = [&](idx_t i) -> double {
-    if (i<=0) return i + 0.01;
-    if (i >= N) return i -0.01;
-
-    return static_cast<double>(i);
-  };
-
   // ---------------------------------------------------------------------------
   // 2. GLOBAL CELL DISTRIBUTION
+  //    Need to construct a lightweight global mesh. This will help us pair up
+  //    local and remote indices on different partitions.
   // ---------------------------------------------------------------------------
 
-  // Define cell record.
-  // This currently keeps track of more information than we probably need.
-  // This may be reduced once we've implemented halos.
+  // Define cell types.
   enum class CellType {
     UNDEFINED,
     OWNER,
     HALO
   };
 
+  // Define cell record.
   struct GlobalCell {
     CellType type{CellType::UNDEFINED};
     gidx_t  globalIdx{undefinedGlobalIdx}; // Global ID.
@@ -340,11 +338,11 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     idx_t jEnd{std::numeric_limits<idx_t>::min()};
   };
 
-  // Make list of all cells.
-  auto globalCells = std::vector<GlobalCell>(idx2st(nCellsGrid));
+  // Make list of all possible cells.
+  auto globalCells = std::vector<GlobalCell>(idx2st(nCellsArray));
 
   // Initialise bounding box.
-  auto cellBounds = std::vector<BoundingBox>(idx2st(nTiles));
+  auto cellBounds = std::vector<BoundingBox>(idx2st(6));
 
   // Set xy and tji grid iterators.
   auto tjiIt = csGrid.tij().begin();
@@ -394,11 +392,11 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
 
   // Give possible edge-halo cells a unique global ID.
-  const auto jacs = CubedSphereJacobian(csGrid);
+  const auto jacs = NeighbourJacobian(csGrid);
 
   gidx_t cellGlobalIdxCount = nCellsUnique + 1;
 
-  for (idx_t t = 0; t < nTiles; ++t) {
+  for (idx_t t = 0; t < 6; ++t) {
     for (idx_t j = ijBegin; j < ijEnd; ++j) {
       for (idx_t i = ijBegin; i < ijEnd; ++i) {
 
@@ -414,10 +412,16 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
         // Set global index.
         cell.globalIdx = cellGlobalIdxCount++;
 
-        // Get owning cell
-        const auto ownerTij = jacs.tijLocalToGlobal(PointTIJ(t, i, j));
+        // Get i, j and t of owning cell
+        PointIJ ijGlobal;
+        idx_t tGlobal;
+
+        // Cells reside at half integer ij values.
+        std::tie(ijGlobal, tGlobal) =
+          jacs.ijLocalToGlobal(PointIJ(i + 0.5, j + 0.5), t);
+
         const auto ownerIdx =
-          getCellIdx(ownerTij.t(), ownerTij.jRound(), ownerTij.iRound(), true);
+          getCellIdx(tGlobal, ijGlobal.jCell(), ijGlobal.iCell(), true);
         const auto& ownerCell = globalCells[ownerIdx];
         cell.remoteCell = &ownerCell;
 
@@ -427,16 +431,14 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
   ATLAS_ASSERT(cellGlobalIdxCount == nCellsTotal + 1);
 
-  std::cout << "generated global cells" << std::endl;
-
   // ---------------------------------------------------------------------------
-  // 3. GLOBAL OWNED NODE AND TYPE-A GHOST NODE DISTRIBUTION
+  // 3. GLOBAL NODE DISTRIBUTION
+  //    Construct a lightweight global distribution of nodes. Again, this will
+  //    help us match up local and remote indices accross partitions.
   // ---------------------------------------------------------------------------
 
-  // Define global node record.
-  // This currently keeps track of more information than we probably need.
-  // This may be reduced once we've implemented halos.
 
+  // Define node types.
   enum class NodeType {
     UNDEFINED,
     OWNER,
@@ -444,6 +446,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     HALO
   };
 
+  // Define global node record.
   struct GlobalNode {
     NodeType          type{NodeType::UNDEFINED};
     gidx_t            globalIdx{undefinedGlobalIdx};  // Global ID,
@@ -454,7 +457,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   };
 
   // Make list of all nodes.
-  auto globalNodes = std::vector<GlobalNode>(idx2st(nNodesGrid));
+  auto globalNodes = std::vector<GlobalNode>(idx2st(nNodesArray));
 
   // Set counters for local node indices.
   auto nodeLocalIdxCount = std::vector<idx_t>(nParts, 0);
@@ -463,7 +466,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   gidx_t nodeGlobalOwnedIdxCount = 1;
   gidx_t nodeGlobalGhostIdxCount = nNodesUnique + 1;
 
-  for (idx_t t = 0; t < nTiles; ++t) {
+  for (idx_t t = 0; t < 6; ++t) {
     for (idx_t j = ijBegin; j < ijEnd + 1; ++j) {
       for (idx_t i = ijBegin; i < ijEnd + 1; ++i) {
 
@@ -477,24 +480,15 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
         if (edgeNode(j, i) or !interiorNode(j, i)) {
 
           // Get owning node
-          const auto ownerTij = jacs.tijLocalToGlobal(PointTIJ(t, i, j));
+          PointIJ ijGlobal;
+          idx_t tGlobal;
+
+          // Nodes reside on interger ij values.
+          std::tie(ijGlobal, tGlobal) = jacs.ijLocalToGlobal(PointIJ(i, j), t);
+
           const auto ownerIdx =
-            getNodeIdx(ownerTij.t(), ownerTij.jRound(), ownerTij.iRound(), true);
+            getNodeIdx(tGlobal, ijGlobal.jNode(), ijGlobal.iNode(), true);
           const auto& ownerNode = globalNodes[ownerIdx];
-
-
-          const auto txy = jacs.tijToTxy(PointTIJ(t, i, j));
-          const auto gtxy = jacs.txyLocalToGlobal(txy);
-
-          std::cout << t << " " << j << " " << i << std::endl;
-          std::cout << ownerTij.t() << " " << ownerTij.j() << " " << ownerTij.i() << std::endl;
-          std::cout << ownerTij.t() << " " << ownerTij.jRound() << " " << ownerTij.iRound() << std::endl << std::endl;
-
-          std::cout << txy.t() << " " << txy.y() << " " << txy.x() << std::endl;
-          std::cout << gtxy.t() << " " << gtxy.y() << " " << gtxy.x() << std::endl <<std::endl;
-
-
-          ATLAS_ASSERT(interiorNode(ownerTij.jRound(), ownerTij.iRound()));
 
           if (&node != &ownerNode) {
 
@@ -522,7 +516,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
         // Get owning cell.
         node.ownerCell = &globalCells[getCellIdx(t, j - 1, i - 1, false)];
 
-        // Set partition.
+        // Get partition from cell.
         node.part = node.ownerCell->part;
 
         // Owner node. Set local index.
@@ -538,9 +532,15 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   ATLAS_ASSERT(nodeGlobalOwnedIdxCount == nNodesUnique + 1);
   ATLAS_ASSERT(nodeGlobalGhostIdxCount == nNodesTotal + 1);
   ATLAS_ASSERT(idxSum(nodeLocalIdxCount) == nNodesUnique);
-  std::cout << "generated global nodes" << std::endl;
 
-  // Find local cells.
+  // ---------------------------------------------------------------------------
+  // 4. LOCATE LOCAL CELLS.
+  //    Now that we know where all the nodes and cells are, we can make a list
+  //    of local cells to add the the mesh. "Owner" cells correspond to grid
+  //    points on this parition. "Halo" cells are at most nHalo grid points
+  //    away from an owner cell.
+  // ---------------------------------------------------------------------------
+
 
   // Define local cell record.
   struct LocalCell {
@@ -558,14 +558,14 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   };
 
   // Loop over all possible local cells.
-  for (idx_t t = 0; t < nTiles; ++t) {
+  for (idx_t t = 0; t < 6; ++t) {
 
     // Limit range to bounds recorded earlier.
     const auto bounds = cellBounds[idx2st(t)];
-    const auto iBegin = bounds.iBegin - halo;
-    const auto iEnd   = bounds.iEnd   + halo;
-    const auto jBegin = bounds.jBegin - halo;
-    const auto jEnd   = bounds.jEnd   + halo;
+    const auto iBegin = bounds.iBegin - nHalo;
+    const auto iEnd   = bounds.iEnd   + nHalo;
+    const auto jBegin = bounds.jBegin - nHalo;
+    const auto jEnd   = bounds.jEnd   + nHalo;
 
     for (idx_t j = jBegin; j < jEnd; ++j) {
       for (idx_t i = iBegin; i < iEnd; ++i) {
@@ -596,8 +596,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
           localCell.j = j;
           localCells.push_back(localCell);
 
-          return;
-
         };
 
         // Check if cell is an owner.
@@ -609,8 +607,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
           // Check if cell is a halo.
           auto isHalo = false;
-          for (idx_t jHalo = j - halo; jHalo < j + halo + 1; ++jHalo) {
-            for (idx_t iHalo = i - halo; iHalo < i + halo + 1; ++iHalo) {
+          for (idx_t jHalo = j - nHalo; jHalo < j + nHalo + 1; ++jHalo) {
+            for (idx_t iHalo = i - nHalo; iHalo < i + nHalo + 1; ++iHalo) {
 
               if (invalidCell(jHalo, iHalo)) continue;
 
@@ -642,7 +640,13 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
       return cellA.type < cellB.type;
     });
 
-  std::cout << "generated local cells" << std::endl;
+  // ---------------------------------------------------------------------------
+  // 5. LOCATE LOCAL NODES.
+  //    We can now locate the nodes surrounding the owner and halo cells that
+  //    we are adding to the mesh. Nodes which are owned by a cell are marked
+  //    as owners. Nodes which neighbour at least one owned cell are marked as
+  //    ghosts. Nodes which only neighbour halo cells are marked as halo nodes.
+  // ---------------------------------------------------------------------------
 
   // Define local node record.
   struct LocalNode {
@@ -657,14 +661,14 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   auto localNodes = std::vector<LocalNode>{};
 
   // Loop over all possible local nodes.
-  for (idx_t t = 0; t < nTiles; ++t) {
+  for (idx_t t = 0; t < 6; ++t) {
 
       // Limit range to bounds recorded earlier.
       const auto bounds = cellBounds[idx2st(t)];
-      const auto iBegin = bounds.iBegin - halo;
-      const auto iEnd   = bounds.iEnd   + halo + 1;
-      const auto jBegin = bounds.jBegin - halo;
-      const auto jEnd   = bounds.jEnd   + halo + 1;
+      const auto iBegin = bounds.iBegin - nHalo;
+      const auto iEnd   = bounds.iEnd   + nHalo + 1;
+      const auto jBegin = bounds.jBegin - nHalo;
+      const auto jEnd   = bounds.jEnd   + nHalo + 1;
 
     for (idx_t j = jBegin; j < jEnd; ++j) {
       for (idx_t i = iBegin; i < iEnd; ++i) {
@@ -700,8 +704,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
           localNodes.push_back(localNode);
 
-          return;
-
         };
 
         // Check if node is an owner.
@@ -728,8 +730,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
               cell2.part == st2idx(thisPart) or
               cell3.part == st2idx(thisPart)) {
 
-            // Node is flagged as a halo if none of the neighbouring cells are
-            // owners. Otherwise it's a ghost node.
+            // Node is flagged as a halo if none of these neighbour cells is an
+            // owner. Otherwise it's a ghost node.
             const auto isGhost =
               (cell0.part == st2idx(thisPart) and cell0.type == CellType::OWNER) or
               (cell1.part == st2idx(thisPart) and cell1.type == CellType::OWNER) or
@@ -739,26 +741,21 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
             if (isGhost) copyNodeData(NodeType::GHOST);
             else copyNodeData(NodeType::HALO);
 
-
           }
-
         }
-
       }
     }
   }
 
-  std::cout << "generated global nodes" << std::endl;
-
-  // Ghost nodes are mixed in with owned nodes. Sort by node type to correct.
-  // Note: value of localIdx for owned nodes should match element number of
-  // localNodes vector. localIdx value will be overwritten for non-owned nodes.
+  // Ghost nodes are mixed in with owner nodes. Sort by node type to correct.
   std::stable_sort(localNodes.begin(), localNodes.end(),
     [](const LocalNode& nodeA, const LocalNode& nodeB){
       return nodeA.type < nodeB.type;
     });
 
   // Check/Set local indices.
+  // Note: value of localIdx for owner nodes should now match element number of
+  // localNodes vector. localIdx value will be overwritten for non-owner nodes.
   idx_t nodeLocalIdx = 0;
   for (auto& node : localNodes) {
 
@@ -770,24 +767,31 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     ++nodeLocalIdx;
   }
 
-  std::cout << "generated local nodes" << std::endl;
-
   // ---------------------------------------------------------------------------
-  // 5. ASSIGN NODES TO MESH
+  // 6. ASSIGN NODES TO MESH
+  //    In addition to the usual fields, we will add t, i and j to mesh.nodes().
   // ---------------------------------------------------------------------------
 
   // Resize nodes.
-  mesh.nodes().resize(st2idx(localNodes.size()));
+  auto& nodes = mesh.nodes();
+  nodes.resize(st2idx(localNodes.size()));
+
+  // Add extra field.
+  auto ijtField = nodes.add(
+    Field("ijt", make_datatype<idx_t>(), make_shape(nodes.size(), 3)));
+  ijtField.set_variables(3);
 
   // Get field views
-  auto nodesGlobalIdx = array::make_view<gidx_t, 1>(mesh.nodes().global_index());
-  auto nodesRemoteIdx = array::make_indexview<idx_t, 1>(mesh.nodes().remote_index());
-  auto nodesXy        = array::make_view<double, 2>(mesh.nodes().xy());
-  auto nodesLonLat    = array::make_view<double, 2>(mesh.nodes().lonlat());
-  auto nodesPart      = array::make_view<int, 1>(mesh.nodes().partition());
-  auto nodesGhost     = array::make_view<int, 1>(mesh.nodes().ghost());
-  auto nodesHalo      = array::make_view<int, 1>(mesh.nodes().halo());
-  auto nodesFlags     = array::make_view<int, 1>(mesh.nodes().flags());
+  auto nodesGlobalIdx = array::make_view<gidx_t, 1>(nodes.global_index());
+  auto nodesRemoteIdx = array::make_indexview<idx_t, 1>(nodes.remote_index());
+  auto nodesXy        = array::make_view<double, 2>(nodes.xy());
+  auto nodesLonLat    = array::make_view<double, 2>(nodes.lonlat());
+  auto nodesPart      = array::make_view<int, 1>(nodes.partition());
+  auto nodesGhost     = array::make_view<int, 1>(nodes.ghost());
+  auto nodesHalo      = array::make_view<int, 1>(nodes.halo());
+  auto nodesFlags     = array::make_view<int, 1>(nodes.flags());
+  auto nodesIjt       = array::make_view<idx_t, 2>(ijtField);
+
 
   // Set fields.
   nodeLocalIdx = 0;
@@ -803,16 +807,21 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     nodesPart(nodeLocalIdx) = node.part;
 
     // Set xy.
-    const auto txyLocal = jacs.tijToTxy(PointTIJ(node.t, node.i, node.j));
-    const auto txyGlobal = jacs.txyLocalToGlobal(txyLocal);
+    const auto xyLocal = jacs.xy(PointIJ(node.i, node.j), node.t);
+    const auto xyGlobal = jacs.xyLocalToGlobal(xyLocal, node.t).first;
 
-    nodesXy(nodeLocalIdx, XX) = txyLocal.x();
-    nodesXy(nodeLocalIdx, YY) = txyLocal.y();
+    nodesXy(nodeLocalIdx, XX) = xyLocal.x();
+    nodesXy(nodeLocalIdx, YY) = xyLocal.y();
 
     // Set lon-lat.
-    const auto lonLat = csProjection->lonlat(txyGlobal.xy());
+    const auto lonLat = csProjection->lonlat(xyGlobal);
     nodesLonLat(nodeLocalIdx, LON) = lonLat.lon();
     nodesLonLat(nodeLocalIdx, LAT) = lonLat.lat();
+
+    // Set tij.
+    nodesIjt(nodeLocalIdx, Coordinates::I) = node.i;
+    nodesIjt(nodeLocalIdx, Coordinates::J) = node.j;
+    nodesIjt(nodeLocalIdx, Coordinates::T) = node.t;
 
     // Set flags.
     Topology::reset(nodesFlags(nodeLocalIdx));
@@ -844,36 +853,50 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     ++nodeLocalIdx;
   }
 
-  std::cout << "nodes to fields" << std::endl;
+  // ---------------------------------------------------------------------------
+  // 7. ASSIGN CELLS TO MESH
+  //    Again, we'll add t, i and j to mesh.cells().
+  // ---------------------------------------------------------------------------
 
-  // ---------------------------------------------------------------------------
-  // 6. ASSIGN CELLS TO MESH
-  // ---------------------------------------------------------------------------
+  auto& cells = mesh.cells();
 
   // Resize cells.
-  mesh.cells().add(new mesh::temporary::Quadrilateral(), st2idx(localCells.size()));
+  cells.add(new mesh::temporary::Quadrilateral(), st2idx(localCells.size()));
+
+  // Add extra field.
+  ijtField = cells.add(
+      Field("ijt", make_datatype<idx_t>(), make_shape(cells.size(), 3)));
+  ijtField.set_variables(3);
 
   // Set field views.
-  auto cellsGlobalIdx = array::make_view<gidx_t, 1>(mesh.cells().global_index());
-  auto cellsPart      = array::make_view<int, 1>(mesh.cells().partition());
+  auto cellsGlobalIdx = array::make_view<gidx_t, 1>(cells.global_index());
+  auto cellsPart      = array::make_view<int, 1>(cells.partition());
+  auto cellsHalo      = array::make_view<int, 1>(cells.halo());
+  auto cellsFlags     = array::make_view<int, 1>(cells.flags());
+  auto cellsIjt       = array::make_view<idx_t, 2>(ijtField);
 
   // Set local cells.
-  auto& nodeConnectivity = mesh.cells().node_connectivity();
+  auto& nodeConnectivity = cells.node_connectivity();
+  const auto cellElemIdx0 = cells.elements(0).begin();
 
-  idx_t cellLocalIdx = mesh.cells().elements(0).begin();
+  idx_t cellLocalIdx = 0;
   for (const auto& cell : localCells) {
 
     // Get four surroundings nodes.
-    const auto& node0 = globalNodes[getNodeIdx(cell.t, cell.j    , cell.i    , true)];
-    const auto& node1 = globalNodes[getNodeIdx(cell.t, cell.j    , cell.i + 1, true)];
-    const auto& node2 = globalNodes[getNodeIdx(cell.t, cell.j + 1, cell.i + 1, true)];
-    const auto& node3 = globalNodes[getNodeIdx(cell.t, cell.j + 1, cell.i    , true)];
+    const auto nodeIdx0 = getNodeIdx(cell.t, cell.j    , cell.i    , true);
+    const auto nodeIdx1 = getNodeIdx(cell.t, cell.j    , cell.i + 1, true);
+    const auto nodeIdx2 = getNodeIdx(cell.t, cell.j + 1, cell.i + 1, true);
+    const auto nodeIdx3 = getNodeIdx(cell.t, cell.j + 1, cell.i    , true);
+    const auto& node0 = globalNodes[nodeIdx0];
+    const auto& node1 = globalNodes[nodeIdx1];
+    const auto& node2 = globalNodes[nodeIdx2];
+    const auto& node3 = globalNodes[nodeIdx3];
 
     const auto quadNodeIdx = std::array<idx_t, 4> {
       node0.localIdx, node1.localIdx, node2.localIdx, node3.localIdx};
 
     // Set connectivity.
-    nodeConnectivity.set(cellLocalIdx, quadNodeIdx.data());
+    nodeConnectivity.set(cellLocalIdx + cellElemIdx0, quadNodeIdx.data());
 
     // Set global index.
     cellsGlobalIdx(cellLocalIdx) = cell.globalIdx;
@@ -881,13 +904,37 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     // Set partition.
     cellsPart(cellLocalIdx) = cell.part;
 
+    // Set ijt.
+    cellsIjt(cellLocalIdx, Coordinates::I) = cell.i;
+    cellsIjt(cellLocalIdx, Coordinates::J) = cell.j;
+    cellsIjt(cellLocalIdx, Coordinates::T) = cell.t;
+
+    // Set flags.
+    Topology::reset(cellsFlags(cellLocalIdx));
+    switch(cell.type) {
+
+      case CellType::UNDEFINED : {
+        ATLAS_ASSERT(CellType::UNDEFINED);
+        break;
+      }
+      case CellType::OWNER : {
+        cellsHalo(cellLocalIdx) = 0;
+        break;
+      }
+      case CellType::HALO : {
+        cellsHalo(cellLocalIdx) = 1;
+        Topology::set(cellsFlags(cellLocalIdx), Topology::GHOST);
+        break;
+      }
+    }
+
     ++cellLocalIdx;
   }
 
-  std::cout << "cells to fields" << std::endl;
 
   // ---------------------------------------------------------------------------
-  // 7. FINALISE
+  // 8. FINALISE
+  //    Done. That was rather a lot of bookkeeping!
   // ---------------------------------------------------------------------------
 
   mesh.nodes().global_index().metadata().set("human_readable", true);

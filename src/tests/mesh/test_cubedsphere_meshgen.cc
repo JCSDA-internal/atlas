@@ -9,9 +9,11 @@
 #include "atlas/functionspace/NodeColumns.h"
 #include "atlas/field/FieldSet.h"
 #include "atlas/grid.h"
+#include "atlas/grid/CubedSphereGrid.h"
 #include "atlas/grid/Tiles.h"
 #include "atlas/mesh.h"
 #include "atlas/meshgenerator.h"
+#include "atlas/meshgenerator/detail/cubedsphere/CubedSphereUtility.h"
 #include "atlas/output/Gmsh.h"
 #include "atlas/grid/Partitioner.h"
 #include "atlas/grid/detail/partitioner/CubedSpherePartitioner.h"
@@ -21,63 +23,128 @@
 #include "tests/AtlasTestEnvironment.h"
 
 namespace atlas {
-  namespace test {
+namespace test {
 
-    CASE("cubedsphere_mesh_test") {
+CASE("cubedsphere_mesh_jacobian_test") {
 
-      // Set grid.
-      const auto grid = atlas::Grid("CS-LFR-C-16");
+  using namespace meshgenerator::detail::cubedsphere;
 
-      // Set mesh config.
-      auto meshConfig = util::Config("partitioner", "equal_regions");
+  // Set N.
+  const idx_t N = 2;
 
-      // Set mesh generators.
-      const auto csMeshgen = atlas::MeshGenerator("cubedsphere"); // defaults to cubed sphere partitioner.
-      const auto erMeshgen = atlas::MeshGenerator("cubedsphere", meshConfig); // Equal regions partitioner.
+  // Set grid.
+  const auto grid = atlas::Grid("CS-LFR-C-" + std::to_string(N));
 
-      const auto csMesh = csMeshgen.generate(grid);
-      const auto erMesh = erMeshgen.generate(grid);
+  // Set Jacobian
+  const auto jacobian = NeighbourJacobian(CubedSphereGrid(grid));
 
 
-      // Set gmsh config.
-      auto gmshConfigXy = atlas::util::Config("coordinates", "xy");
-      auto gmshConfigXyz = atlas::util::Config("coordinates", "xyz");
-      auto gmshConfigLonLat = atlas::util::Config("coordinates", "lonlat");
+  // Play around with some grids.
+  for (idx_t t = 0; t < 6; ++t) {
 
-      gmshConfigXy.set("ghost", true);
-      gmshConfigXy.set("info", true);
+    std::cout << t << std::endl;
+    for (idx_t j = - 1; j < N + 2; ++j) {
+      for (idx_t i = - 1; i < N + 2; ++i) {
 
-      gmshConfigXyz.set("ghost", true);
-      gmshConfigXyz.set("info", true);
+        const auto ij = PointIJ(i, j);
 
-      gmshConfigLonLat.set("ghost", true);
-      gmshConfigLonLat.set("info", true);
+        if (!jacobian.ijCross(ij)) continue;
+        if (jacobian.ijInterior(ij)) continue;
 
-      // Set gmsh objects.
-      auto gmshXy = atlas::output::Gmsh("cs_xy_mesh.msh", gmshConfigXy);
-      auto gmshXyz = atlas::output::Gmsh("cs_xyz_mesh.msh", gmshConfigXyz);
-      auto gmshLonLat = atlas::output::Gmsh("cs_lonlat_mesh.msh", gmshConfigLonLat);
+        const auto xyLocal = jacobian.xy(ij, t);
+        const auto xytGlobal = jacobian.xyLocalToGlobal(xyLocal, t);
+        const auto ijGlobal = jacobian.ijLocalToGlobal(ij, t);
 
-      // Write gmsh.
-      gmshXy.write(csMesh);
-      gmshXyz.write(csMesh);
-      gmshLonLat.write(csMesh);
+        std::cout << ij << " ";
+        std::cout << ijGlobal.first << " " << ijGlobal.second << "   ";
 
-      // Set gmsh objects.
-      gmshXy = atlas::output::Gmsh("er_xy_mesh.msh", gmshConfigXy);
-      gmshXyz = atlas::output::Gmsh("er_xyz_mesh.msh", gmshConfigXyz);
-      gmshLonLat = atlas::output::Gmsh("er_lonlat_mesh.msh", gmshConfigLonLat);
 
-      // Write gmsh.
-      gmshXy.write(erMesh);
-      gmshXyz.write(erMesh);
-      gmshLonLat.write(erMesh);
-
+      }
+    std::cout << std::endl;
     }
+    std::cout << std::endl << std::endl;
+  }
+}
+
+CASE("cubedsphere_mesh_test") {
+
+
+  // Set grid.
+  const auto grid = atlas::Grid("CS-LFR-C-24");
+
+  // Set mesh config.
+  auto meshConfig = util::Config("partitioner", "equal_regions");
+
+  // Set mesh generators.
+  const auto csMeshgen = atlas::MeshGenerator("cubedsphere"); // defaults to cubed sphere partitioner.
+  const auto erMeshgen = atlas::MeshGenerator("cubedsphere", meshConfig); // Equal regions partitioner.
+
+  const auto csMesh = csMeshgen.generate(grid);
+  const auto erMesh = erMeshgen.generate(grid);
+
+
+  const auto erFuncSpace = atlas::functionspace::NodeColumns(erMesh);
+  auto erFieldSet = atlas::FieldSet{};
+  erFieldSet.add(erMesh.nodes().xy());
+  erFieldSet.add(erMesh.nodes().lonlat());
+  erFieldSet.add(erMesh.nodes().ghost());
+  erFieldSet.add(erMesh.nodes().halo());
+  erFieldSet.add(erMesh.nodes().remote_index());
+  erFieldSet.add(erMesh.nodes().partition());
+  erFieldSet.add(erMesh.nodes().global_index());
+  erFieldSet.add(erMesh.nodes().field("ijt"));
+
+
+  const auto csFuncSpace = atlas::functionspace::NodeColumns(csMesh);
+  auto csFieldSet = atlas::FieldSet{};
+  csFieldSet.add(csMesh.nodes().xy());
+  csFieldSet.add(csMesh.nodes().lonlat());
+  csFieldSet.add(csMesh.nodes().ghost());
+  csFieldSet.add(csMesh.nodes().halo());
+  csFieldSet.add(csMesh.nodes().remote_index());
+  csFieldSet.add(csMesh.nodes().partition());
+  csFieldSet.add(csMesh.nodes().global_index());
+  csFieldSet.add(csMesh.nodes().field("ijt"));
+
+
+  // Set gmsh config.
+  auto gmshConfigXy = atlas::util::Config("coordinates", "xy");
+  auto gmshConfigXyz = atlas::util::Config("coordinates", "xyz");
+  auto gmshConfigLonLat = atlas::util::Config("coordinates", "lonlat");
+
+  gmshConfigXy.set("ghost", true);
+
+  gmshConfigXyz.set("ghost", true);
+
+  gmshConfigLonLat.set("ghost", true);
+
+  // Set gmsh objects.
+  auto gmshXy = atlas::output::Gmsh("cs_xy_mesh.msh", gmshConfigXy);
+  auto gmshXyz = atlas::output::Gmsh("cs_xyz_mesh.msh", gmshConfigXyz);
+
+  // Write gmsh.
+  gmshXy.write(csMesh);
+  gmshXy.write(csFieldSet, csFuncSpace);
+  gmshXyz.write(csMesh);
+  gmshXyz.write(csFieldSet, csFuncSpace);
+
+
+  // Set gmsh objects.
+  gmshXy = atlas::output::Gmsh("er_xy_mesh.msh", gmshConfigXy);
+  gmshXyz = atlas::output::Gmsh("er_xyz_mesh.msh", gmshConfigXyz);
+
+  // Write gmsh.
+  gmshXy.write(erMesh);
+  gmshXy.write(erFieldSet, erFuncSpace);
+  gmshXyz.write(erMesh);
+  gmshXyz.write(erFieldSet, erFuncSpace);
+
+
+}
 
 
 
-    }  // namespace test
+}  // namespace test
 }  // namespace atlas
 
 int main( int argc, char** argv ) {

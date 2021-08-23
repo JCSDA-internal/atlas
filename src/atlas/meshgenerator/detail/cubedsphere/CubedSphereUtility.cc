@@ -102,26 +102,30 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
     xy00_[t] = xy00[t] + dxy_by_dij_[t] * PointIJ(-0.5, -0.5);
 
     // Neighbour assignment lambda.
-    const auto neighbourAssignment = [&](Locations::k k){
+    const auto neighbourAssignment = [&](TileEdge::k k){
 
       // Shift points in to neighbouring tiles.
       PointIJ ijDisplacement;
       switch (k) {
-        case Locations::LEFT : {
+        case TileEdge::LEFT : {
           ijDisplacement = PointIJ(-2, 0);
           break;
           }
-        case Locations::TOP : {
-          ijDisplacement = PointIJ(0, N_);
+        case TileEdge::BOTTOM : {
+          ijDisplacement = PointIJ(0, -2);
           break;
         }
-        case Locations::RIGHT : {
+        case TileEdge::RIGHT : {
           ijDisplacement = PointIJ(N_, 0);
           break;
         }
-        case Locations::BOTTOM : {
-          ijDisplacement = PointIJ(0, -2);
+        case TileEdge::TOP : {
+          ijDisplacement = PointIJ(0, N_);
           break;
+        }
+        case TileEdge::UNDEFINED : {
+        throw_Exception("Undefined tile edge.", Here());
+        break;
         }
       }
 
@@ -158,10 +162,10 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
     };
 
     // Assign neighbours (good job we put it all in a lambda!).
-    neighbourAssignment(Locations::LEFT);
-    neighbourAssignment(Locations::TOP);
-    neighbourAssignment(Locations::RIGHT);
-    neighbourAssignment(Locations::BOTTOM);
+    neighbourAssignment(TileEdge::LEFT);
+    neighbourAssignment(TileEdge::BOTTOM);
+    neighbourAssignment(TileEdge::RIGHT);
+    neighbourAssignment(TileEdge::TOP);
 
   }
 
@@ -224,11 +228,11 @@ std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
   }
   else {
     // Figure out which tile xy is on.
-    Locations::k k;
-    if      (ijLocal.i() < 0 ) k = Locations::LEFT;
-    else if (ijLocal.j() > N_) k = Locations::TOP;
-    else if (ijLocal.i() > N_) k = Locations::RIGHT;
-    else if (ijLocal.j() < 0 ) k = Locations::BOTTOM;
+    TileEdge::k k;
+    if      (ijLocal.iNode() < 0 ) k = TileEdge::LEFT;
+    else if (ijLocal.jNode() < 0 ) k = TileEdge::BOTTOM;
+    else if (ijLocal.iNode() > N_) k = TileEdge::RIGHT;
+    else if (ijLocal.jNode() > N_) k = TileEdge::TOP;
 
     // Get reference points and jacobian.
     const auto& xy00Local_ = neighbours_[idx2st(tLocal)].xy00Local_[k];
@@ -272,16 +276,16 @@ std::pair<PointIJ, idx_t> NeighbourJacobian::ijLocalToGlobal(
 }
 
 bool NeighbourJacobian::ijInterior(const PointIJ& ij) const {
-  return ij.i() >= 0 and ij.i() <= N_ and
-         ij.j() >= 0 and ij.j() <= N_;
+  return ij.iNode() >= 0 and ij.iNode() <= N_ and
+         ij.jNode() >= 0 and ij.jNode() <= N_;
 }
 
 bool NeighbourJacobian::ijCross(const PointIJ& ij) const {
 
-  const bool inCorner = (ij.i() < 0  and ij.j() < 0 ) or // bottom-left corner.
-                        (ij.i() > N_ and ij.j() < 0 ) or // bottom-right corner.
-                        (ij.i() > N_ and ij.j() > N_) or // top-right corner.
-                        (ij.i() < 0  and ij.j() > N_);   // top-left corner.
+  const bool inCorner = (ij.iNode() < 0  and ij.jNode() < 0 ) or // bottom-left corner.
+                        (ij.iNode() > N_ and ij.jNode() < 0 ) or // bottom-right corner.
+                        (ij.iNode() > N_ and ij.jNode() > N_) or // top-right corner.
+                        (ij.iNode() < 0  and ij.jNode() > N_);   // top-left corner.
   return !inCorner;
 }
 

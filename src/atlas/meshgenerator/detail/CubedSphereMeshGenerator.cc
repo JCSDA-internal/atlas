@@ -549,6 +549,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     idx_t         remoteIdx{undefinedIdx};
     idx_t         part{undefinedIdx};
     idx_t         t{}, j{}, i{};
+    idx_t*        localPart{};
+    CellType*     localType{};
   };
 
   auto localCells = std::vector<LocalCell>{};
@@ -594,6 +596,15 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
           localCell.t = t;
           localCell.i = i;
           localCell.j = j;
+
+
+          if (type == CellType::HALO) {
+            // Point to global data so we can overwrite later.
+            // This is needed to find local nodes.
+            localCell.localPart = &globalCell.part;
+            localCell.localType = &globalCell.type;
+          }
+
           localCells.push_back(localCell);
 
         };
@@ -622,10 +633,6 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
             copyCellData(CellType::HALO);
 
-            // Overwrite globalCell properties to help find nodes later.
-            globalCell.type = CellType::HALO;
-            globalCell.part = st2idx(thisPart);
-
           }
         }
 
@@ -639,6 +646,15 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     [](const LocalCell& cellA, const LocalCell& cellB){
       return cellA.type < cellB.type;
     });
+
+  // Overwrite partition and type for halos.
+  for (auto& cell : localCells) {
+
+    if (cell.type == CellType::HALO) {
+      *cell.localPart = st2idx(thisPart);
+      *cell.localType = CellType::HALO;
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // 5. LOCATE LOCAL NODES.
@@ -863,17 +879,28 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // Resize cells.
   cells.add(new mesh::temporary::Quadrilateral(), st2idx(localCells.size()));
 
-  // Add extra field.
+  // Add extra fields.
   ijtField = cells.add(
       Field("ijt", make_datatype<idx_t>(), make_shape(cells.size(), 3)));
   ijtField.set_variables(3);
 
+  auto xyField = cells.add(
+    Field("xy", make_datatype<double>(), make_shape(cells.size(), 2)));
+  xyField.set_variables(2);
+
+  auto lonLatField = cells.add(
+    Field("lonlat", make_datatype<double>(), make_shape(cells.size(), 2)));
+  lonLatField.set_variables(2);
+
   // Set field views.
   auto cellsGlobalIdx = array::make_view<gidx_t, 1>(cells.global_index());
+  auto cellsRemoteIdx = array::make_indexview<idx_t, 1>(cells.remote_index());
   auto cellsPart      = array::make_view<int, 1>(cells.partition());
   auto cellsHalo      = array::make_view<int, 1>(cells.halo());
   auto cellsFlags     = array::make_view<int, 1>(cells.flags());
   auto cellsIjt       = array::make_view<idx_t, 2>(ijtField);
+  auto cellsXy        = array::make_view<double, 2>(xyField);
+  auto cellsLonLat    = array::make_view<double, 2>(lonLatField);
 
   // Set local cells.
   auto& nodeConnectivity = cells.node_connectivity();
@@ -881,6 +908,19 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
   idx_t cellLocalIdx = 0;
   for (const auto& cell : localCells) {
+
+
+    // Set xy.
+    const auto xyLocal = jacs.xy(PointIJ(cell.i + 0.5, cell.j + 0.5), cell.t);
+    const auto xyGlobal = jacs.xyLocalToGlobal(xyLocal, cell.t).first;
+
+    cellsXy(cellLocalIdx, XX) = xyLocal.x();
+    cellsXy(cellLocalIdx, YY) = xyLocal.y();
+
+    // Set lon-lat.
+    const auto lonLat = csProjection->lonlat(xyGlobal);
+    cellsLonLat(cellLocalIdx, LON) = lonLat.lon();
+    cellsLonLat(cellLocalIdx, LAT) = lonLat.lat();
 
     // Get four surroundings nodes.
     const auto nodeIdx0 = getNodeIdx(cell.t, cell.j    , cell.i    , true);
@@ -900,6 +940,9 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
     // Set global index.
     cellsGlobalIdx(cellLocalIdx) = cell.globalIdx;
+
+    // Set cell remote index.
+    cellsRemoteIdx(cellLocalIdx) = cell.remoteIdx;
 
     // Set partition.
     cellsPart(cellLocalIdx) = cell.part;
@@ -936,6 +979,9 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   // 8. FINALISE
   //    Done. That was rather a lot of bookkeeping!
   // ---------------------------------------------------------------------------
+
+  mesh.metadata().set("halo", nHalo);
+  mesh.metadata().set("mesh_type", "cubed_sphere");
 
   mesh.nodes().global_index().metadata().set("human_readable", true);
   mesh.nodes().global_index().metadata().set("min", 1);

@@ -35,9 +35,9 @@ struct Coordinates {
   enum k : idx_t {I, J, T};
 };
 
-/// Enum for tile neighbour locations.
-struct Locations {
-  enum k : size_t {LEFT, TOP, RIGHT, BOTTOM};
+/// Enum for tile edges.
+struct TileEdge {
+  enum k : size_t {LEFT, BOTTOM, RIGHT, TOP, UNDEFINED};
 };
 
 /// Cast size_t to idx_t.

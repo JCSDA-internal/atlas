@@ -7,6 +7,7 @@
 
 #include "atlas/array/MakeView.h"
 #include "atlas/functionspace/NodeColumns.h"
+#include "atlas/functionspace/CellColumns.h"
 #include "atlas/field/FieldSet.h"
 #include "atlas/grid.h"
 #include "atlas/grid/CubedSphereGrid.h"
@@ -29,117 +30,265 @@ CASE("cubedsphere_mesh_jacobian_test") {
 
   using namespace meshgenerator::detail::cubedsphere;
 
-  // Set N.
-  const idx_t N = 2;
-
-  // Set grid.
-  const auto grid = atlas::Grid("CS-LFR-C-" + std::to_string(N));
+  // Set grid an N2 grid with a halo size of 1.
+  const auto grid = atlas::Grid("CS-LFR-C-2");
 
   // Set Jacobian
   const auto jacobian = NeighbourJacobian(CubedSphereGrid(grid));
 
+  // Set vectors of known good outputs.
+  const auto xyLocalKgoVec = std::vector<PointXY>{
+    {0,-90}, {45,-90}, {90,-90}, {-45,-45}, {135,-45}, {-45,0}, {135,0},
+    {-45,45}, {135,45}, {0,90}, {45,90}, {90,90}, {90,-90}, {135,-90},
+    {180,-90}, {45,-45}, {225,-45}, {45,0}, {225,0}, {45,45}, {225,45}, {90,90},
+    {135,90}, {180,90}, {315,-45}, {315,0}, {315,45}, {270,-90}, {270,90},
+    {225,-90}, {225,90}, {180,-90}, {180,90}, {135,-45}, {135,0}, {135,45},
+    {405,-45}, {405,0}, {405,45}, {360,-90}, {360,90}, {315,-90}, {315,90},
+    {270,-90}, {270,90}, {225,-45}, {225,0}, {225,45}, {0,0}, {45,0}, {90,0},
+    {-45,45}, {135,45}, {-45,90}, {135,90}, {-45,135}, {135,135}, {0,180},
+    {45,180}, {90,180}, {-45,-45}, {-45,-90}, {-45,-135}, {0,0}, {0,-180},
+    {45,0}, {45,-180}, {90,0}, {90,-180}, {135,-45}, {135,-90}, {135,-135}};
+
+  const auto xyGlobalKgoVec = std::vector<PointXY>{
+    {315,-45}, {45,-90}, {135,-45}, {315,-45}, {135,-45}, {315,0}, {135,0},
+    {0,90}, {90,90}, {0,90}, {45,90}, {90,90}, {45,-45}, {45,-90}, {225,-45},
+    {45,-45}, {225,-45}, {45,0}, {225,0}, {45,45}, {45,135}, {45,45}, {45,90},
+    {45,135}, {315,-45}, {315,0}, {0,90}, {315,-45}, {0,90}, {45,-90}, {45,90},
+    {135,-45}, {90,90}, {135,-45}, {135,0}, {90,90}, {45,-45}, {45,0}, {45,45},
+    {45,-45}, {45,45}, {45,-90}, {45,90}, {225,-45}, {45,135}, {225,-45},
+    {225,0}, {45,135}, {0,0}, {45,0}, {90,0}, {0,0}, {90,0}, {315,0}, {135,0},
+    {270,0}, {180,0}, {270,0}, {225,0}, {180,0}, {0,0}, {315,0}, {270,0}, {0,0},
+    {270,0}, {45,0}, {225,0}, {90,0}, {180,0}, {90,0}, {135,0}, {180,0}};
+
+  const auto ijGlobalKgoVec = std::vector<PointIJ>{
+    {0,1}, {1,1}, {1,0}, {0,1}, {1,0}, {1,1}, {1,1}, {0,1}, {2,1}, {0,1}, {1,1},
+    {2,1}, {1,0}, {1,1}, {0,1}, {1,0}, {0,1}, {1,1}, {1,1}, {1,0}, {1,2}, {1,0},
+    {1,1}, {1,2}, {0,1}, {1,1}, {0,1}, {0,1}, {0,1}, {1,1}, {1,1}, {1,0}, {2,1},
+    {1,0}, {1,1}, {2,1}, {1,0}, {1,1}, {1,0}, {1,0}, {1,0}, {1,1}, {1,1}, {0,1},
+    {1,2}, {0,1}, {1,1}, {1,2}, {0,1}, {1,1}, {0,1}, {0,1}, {0,1}, {1,1}, {1,1},
+    {1,2}, {1,2}, {1,2}, {1,1}, {1,2}, {0,1}, {1,1}, {1,2}, {0,1}, {1,2}, {1,1},
+    {1,1}, {0,1}, {1,2}, {0,1}, {1,1}, {1,2}};
+
+  const auto tKgoVec = std::vector<idx_t>{
+    3, 5, 1, 3, 1, 3, 1, 4, 4, 4, 4, 4, 0, 5, 2, 0, 2, 0, 2, 4, 4, 4, 4, 4, 3,
+    3, 4, 3, 4, 5, 4, 1, 4, 1, 1, 4, 0, 0, 4, 0, 4, 5, 4, 2, 4, 2, 2, 4, 0, 0,
+    1, 0, 1, 3, 1, 3, 2, 3, 2, 2, 0, 3, 3, 0, 3, 0, 2, 1, 2, 1, 1, 2};
+
+  // Set kgo iterators.
+  auto xyLocalKgoIt = xyLocalKgoVec.cbegin();
+  auto xyGlobalKgoIt = xyGlobalKgoVec.cbegin();
+  auto ijGlobalKgoIt = ijGlobalKgoVec.cbegin();
+  auto tKgoIt = tKgoVec.cbegin();
+
 
   // Play around with some grids.
   for (idx_t t = 0; t < 6; ++t) {
+    for (idx_t j = - 1; j < 4; ++j) {
+      for (idx_t i = - 1; i < 4; ++i) {
 
-    std::cout << t << std::endl;
-    for (idx_t j = - 1; j < N + 2; ++j) {
-      for (idx_t i = - 1; i < N + 2; ++i) {
-
+        // Set ij object.
         const auto ij = PointIJ(i, j);
 
+        // Only look at halo values.
         if (!jacobian.ijCross(ij)) continue;
         if (jacobian.ijInterior(ij)) continue;
 
+        // Get known good outputs.
+        const auto xyLocalKgo = *xyLocalKgoIt++;
+        const auto xyGlobalKgo = *xyGlobalKgoIt++;
+        const auto ijGlobalKgo = *ijGlobalKgoIt++;
+        const auto tKgo = *tKgoIt++;
+
+        // Test known good output.
         const auto xyLocal = jacobian.xy(ij, t);
         const auto xytGlobal = jacobian.xyLocalToGlobal(xyLocal, t);
-        const auto ijGlobal = jacobian.ijLocalToGlobal(ij, t);
+        const auto ijtGlobal = jacobian.ijLocalToGlobal(ij, t);
 
-        std::cout << ij << " ";
-        std::cout << ijGlobal.first << " " << ijGlobal.second << "   ";
+        ATLAS_ASSERT(xyLocal == xyLocalKgo);
+        ATLAS_ASSERT(xytGlobal.first == xyGlobalKgo);
+        ATLAS_ASSERT(xytGlobal.second == tKgo);
+        ATLAS_ASSERT(ijtGlobal.first == ijGlobalKgo);
+        ATLAS_ASSERT(ijtGlobal.second == tKgo);
 
+        // Check xy and ij transforms are consistent.
+        ATLAS_ASSERT(jacobian.ij((jacobian.xyLocalToGlobal(xyLocal, t))) ==
+          jacobian.ijLocalToGlobal(ij, t).first);
+
+        ATLAS_ASSERT(jacobian.xy((jacobian.ijLocalToGlobal(ij, t))) ==
+          jacobian.xyLocalToGlobal(xyLocal, t).first);
 
       }
-    std::cout << std::endl;
     }
-    std::cout << std::endl << std::endl;
   }
+}
+
+
+double testFunction(double lon, double lat) {
+  return std::sin(3 * lon * M_PI / 180) * std::sin(2 * lat * M_PI / 180);
+}
+
+
+void testHaloExchange(const std::string& gridStr, const std::string& partitionerStr,
+                     idx_t halo) {
+
+  // Set grid.
+  const auto grid = Grid(gridStr);
+
+  // Set mesh config.
+  const auto meshConfig =
+    util::Config("partitioner", partitionerStr) |
+    util::Config("halo", halo);
+
+  // Set mesh generator.
+  const auto meshGen = MeshGenerator("cubedsphere", meshConfig);
+
+  // Set mesh
+  const auto mesh = meshGen.generate(grid);
+
+  // Set function space.
+  const auto nodeColumns = functionspace::NodeColumns(mesh);
+  const auto cellColumns = functionspace::CellColumns(mesh);
+
+  // Make a field set of useful diagnostic quantities.
+
+  auto fieldSet = atlas::FieldSet{};
+  fieldSet.add(mesh.nodes().xy());
+  fieldSet.add(mesh.nodes().lonlat());
+  fieldSet.add(mesh.nodes().ghost());
+  fieldSet.add(mesh.nodes().halo());
+  fieldSet.add(mesh.nodes().remote_index());
+  fieldSet.add(mesh.nodes().partition());
+  fieldSet.add(mesh.nodes().global_index());
+  fieldSet.add(mesh.nodes().field("ijt"));
+
+  // Set gmsh config.
+  const auto gmshConfigXy =
+    util::Config("coordinates", "xy") |
+    util::Config("ghost", true);
+
+  const auto gmshConfigXyz =
+    util::Config("coordinates", "xyz") |
+    util::Config("ghost", true);
+
+  // Set gmsh objects.
+  const auto fileStr =
+   gridStr + "_" + partitionerStr + "_halo" + std::to_string(halo);
+  const auto gmshXy =
+   output::Gmsh(fileStr + "_xy.msh", gmshConfigXy);
+  const auto gmshXyz =
+   output::Gmsh(fileStr + "_xyz.msh", gmshConfigXyz);
+
+  // Write outputs.
+  gmshXy.write(mesh);
+  gmshXy.write(fieldSet, nodeColumns);
+
+  gmshXyz.write(mesh);
+  gmshXyz.write(fieldSet, nodeColumns);
+
+  // ---------------------------------------------------------------------------
+  // Test node columns halo exchange.
+  // ---------------------------------------------------------------------------
+
+  // make a test field.
+  auto testField1 = nodeColumns.createField<double>(util::Config("name", "test field (node columns)"));
+
+  // Make some field views.
+  auto testView1 = array::make_view<double, 1>(testField1);
+  auto lonLatView = array::make_view<double, 2>(nodeColumns.lonlat());
+  auto ghostView = array::make_view<idx_t, 1>(nodeColumns.ghost());
+
+  // Set non-ghost values.
+  idx_t testFuncCallCount = 0;
+  for (idx_t i = 0; i < nodeColumns.size(); ++i) {
+
+    // Stop once we've reached ghost points.
+    if (ghostView(i)) break;
+
+    testView1(i) = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
+    ++testFuncCallCount;
+
+  }
+
+  // Make sure that some of the field values were ghosts.
+  if (halo > 0) {
+    ATLAS_ASSERT(testFuncCallCount < nodeColumns.size());
+  }
+
+  nodeColumns.haloExchange(testField1);
+
+  // Check all values after halo exchange.
+  for (idx_t i = 0; i < nodeColumns.size(); ++i) {
+
+    // Test field and test function should be the same.
+    ATLAS_ASSERT(is_approximately_equal(
+      testView1(i), testFunction(lonLatView(i, LON), lonLatView(i, LAT))));
+
+  }
+
+  // Write fields.
+  gmshXy.write(testField1, nodeColumns);
+  gmshXyz.write(testField1, nodeColumns);
+
+  // ---------------------------------------------------------------------------
+  // Test cell columns halo exchange.
+  // ---------------------------------------------------------------------------
+
+  // make a test field.
+  auto testField2 = cellColumns.createField<double>(util::Config("name", "test field (cell columns)"));
+
+  // Make some field views.
+  auto testView2 = array::make_view<double, 1>(testField2);
+  auto haloView = array::make_view<idx_t, 1>(cellColumns.mesh().cells().halo());
+  lonLatView = array::make_view<double, 2>(cellColumns.mesh().cells().field("lonlat"));
+
+  // Set non-halo values.
+  testFuncCallCount = 0;
+  for (idx_t i = 0; i < cellColumns.size(); ++i) {
+
+
+    if (haloView(i)) break;
+
+    testView2(i) = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
+
+  }
+
+  // Make sure that some of the field values were ghosts.
+  if (halo > 0) {
+    ATLAS_ASSERT(testFuncCallCount < cellColumns.size());
+  }
+
+  cellColumns.haloExchange(testField2);
+
+  // Check all values after halo exchange.
+  for (idx_t i = 0; i < cellColumns.size(); ++i) {
+
+    // Test field and test function should be the same.
+    ATLAS_ASSERT(is_approximately_equal(
+      testView2(i), testFunction(lonLatView(i, LON), lonLatView(i, LAT))));
+
+  }
+
+
 }
 
 CASE("cubedsphere_mesh_test") {
 
-
-  // Set grid.
-  const auto grid = atlas::Grid("CS-LFR-C-24");
-
-  // Set mesh config.
-  auto meshConfig = util::Config("partitioner", "equal_regions");
-
-  // Set mesh generators.
-  const auto csMeshgen = atlas::MeshGenerator("cubedsphere"); // defaults to cubed sphere partitioner.
-  const auto erMeshgen = atlas::MeshGenerator("cubedsphere", meshConfig); // Equal regions partitioner.
-
-  const auto csMesh = csMeshgen.generate(grid);
-  const auto erMesh = erMeshgen.generate(grid);
-
-
-  const auto erFuncSpace = atlas::functionspace::NodeColumns(erMesh);
-  auto erFieldSet = atlas::FieldSet{};
-  erFieldSet.add(erMesh.nodes().xy());
-  erFieldSet.add(erMesh.nodes().lonlat());
-  erFieldSet.add(erMesh.nodes().ghost());
-  erFieldSet.add(erMesh.nodes().halo());
-  erFieldSet.add(erMesh.nodes().remote_index());
-  erFieldSet.add(erMesh.nodes().partition());
-  erFieldSet.add(erMesh.nodes().global_index());
-  erFieldSet.add(erMesh.nodes().field("ijt"));
-
-
-  const auto csFuncSpace = atlas::functionspace::NodeColumns(csMesh);
-  auto csFieldSet = atlas::FieldSet{};
-  csFieldSet.add(csMesh.nodes().xy());
-  csFieldSet.add(csMesh.nodes().lonlat());
-  csFieldSet.add(csMesh.nodes().ghost());
-  csFieldSet.add(csMesh.nodes().halo());
-  csFieldSet.add(csMesh.nodes().remote_index());
-  csFieldSet.add(csMesh.nodes().partition());
-  csFieldSet.add(csMesh.nodes().global_index());
-  csFieldSet.add(csMesh.nodes().field("ijt"));
-
-
-  // Set gmsh config.
-  auto gmshConfigXy = atlas::util::Config("coordinates", "xy");
-  auto gmshConfigXyz = atlas::util::Config("coordinates", "xyz");
-  auto gmshConfigLonLat = atlas::util::Config("coordinates", "lonlat");
-
-  gmshConfigXy.set("ghost", true);
-
-  gmshConfigXyz.set("ghost", true);
-
-  gmshConfigLonLat.set("ghost", true);
-
-  // Set gmsh objects.
-  auto gmshXy = atlas::output::Gmsh("cs_xy_mesh.msh", gmshConfigXy);
-  auto gmshXyz = atlas::output::Gmsh("cs_xyz_mesh.msh", gmshConfigXyz);
-
-  // Write gmsh.
-  gmshXy.write(csMesh);
-  gmshXy.write(csFieldSet, csFuncSpace);
-  gmshXyz.write(csMesh);
-  gmshXyz.write(csFieldSet, csFuncSpace);
-
-
-  // Set gmsh objects.
-  gmshXy = atlas::output::Gmsh("er_xy_mesh.msh", gmshConfigXy);
-  gmshXyz = atlas::output::Gmsh("er_xyz_mesh.msh", gmshConfigXyz);
-
-  // Write gmsh.
-  gmshXy.write(erMesh);
-  gmshXy.write(erFieldSet, erFuncSpace);
-  gmshXyz.write(erMesh);
-  gmshXyz.write(erFieldSet, erFuncSpace);
-
-
+  SECTION("halo = 0") {
+    testHaloExchange("CS-LFR-C-12", "equal_regions", 0);
+    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 0);
+  }
+  SECTION("halo = 1") {
+    testHaloExchange("CS-LFR-C-12", "equal_regions", 1);
+    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 1);
+  }
+  SECTION("halo = 2") {
+    testHaloExchange("CS-LFR-C-12", "equal_regions", 2);
+    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 2);
+  }
+  SECTION("halo = 3") {
+    testHaloExchange("CS-LFR-C-12", "equal_regions", 3);
+    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 3);
+  }
 }
 
 
@@ -150,3 +299,4 @@ CASE("cubedsphere_mesh_test") {
 int main( int argc, char** argv ) {
   return atlas::test::run( argc, argv );
 }
+

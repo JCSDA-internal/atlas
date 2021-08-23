@@ -1303,6 +1303,20 @@ void BuildHalo::operator()( int nb_elems ) {
     int halo = 0;
     mesh_.metadata().get( "halo", halo );
 
+    // cubed sphere halos must be set at mesh generation.
+    std::string meshType = "";
+    if (mesh_.metadata().get("mesh_type", meshType)) {
+      if (meshType == "cubed_sphere") {
+        if (halo < nb_elems) {
+          const auto errMsg = "Error: cubed sphere halos must be set up at mesh"
+            "generation. Current halo size is " + std::to_string(halo) + ". "
+            "Required halo size " + std::to_string(nb_elems) + ".";
+          throw_Exception(errMsg, Here());
+        }
+      }
+    }
+
+
     if ( halo == nb_elems ) {
         return;
     }

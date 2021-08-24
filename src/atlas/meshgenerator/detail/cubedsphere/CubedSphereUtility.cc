@@ -83,6 +83,12 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
     throw_Exception("Jacobians can only be calculated for N > 1 .", Here());
   }
 
+  // Assumes cell centre staggering.
+  if (getStagger(csGrid.name()) != Stagger::CELL) {
+    throw_Exception(
+      "NeighbourJacobian class only works for cell-centre grid", Here());
+  }
+
   // Get projection.
   csProjection_ = castProjection(csGrid.projection().get());
 
@@ -92,7 +98,7 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
   // Get grid size.
   N_ = csGrid.N();
 
-  // Get xy of points (i = 0, j = 0), (i = 1, j = 0) and (i = 0, j = 0) on tiles.
+  // Get xy of points (i = 0, j = 0), (i = 1, j = 0) and (i = 0, j = 1) on tiles.
   std::array<PointXY, 6> xy00;
   std::array<PointXY, 6> xy10;
   std::array<PointXY, 6> xy01;

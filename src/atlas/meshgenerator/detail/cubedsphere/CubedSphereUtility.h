@@ -169,33 +169,33 @@ public:
   /// Grid-data constructor.
   NeighbourJacobian(const CubedSphereGrid& csGrid);
 
-  /// \{
+  /// @{
   /// Convert ij on local tile t to xy.
   PointXY xy(const PointIJ& ij, idx_t t) const;
   PointXY xy(const std::pair<PointIJ, idx_t>& ijt) const;
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Convert xy on local tile t to ij.
   PointIJ ij(const PointXY& xy, idx_t t) const;
   PointIJ ij(const std::pair<PointXY, idx_t>& xyt) const;
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Convert extrapolated xy on tile t to global xy and t (needed for halos).
   std::pair<PointXY, idx_t>
     xyLocalToGlobal(const PointXY& xyLocal, idx_t tLocal) const;
   std::pair<PointXY, idx_t>
     xyLocalToGlobal(const std::pair<PointXY, idx_t>& xytLocal) const;
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Convert extrapolated ij on tile t to global ij and t (needed for halos).
   std::pair<PointIJ, idx_t>
     ijLocalToGlobal(const PointIJ& ijLocal, idx_t tLocal) const;
   std::pair<PointIJ, idx_t>
     ijLocalToGlobal(const std::pair<PointIJ, idx_t>& ijtLocal) const;
-  /// \}
+  /// @}
 
   /// Return true if ij is interior to ([0, N], [0, N]).
   bool ijInterior(const PointIJ& ij) const;

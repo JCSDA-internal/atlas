@@ -16,6 +16,23 @@ namespace detail {
 namespace cubedsphere {
 
 // -----------------------------------------------------------------------------
+// Projection cast
+// -----------------------------------------------------------------------------
+
+const CubedSphereProjectionBase* castProjection(
+  const ProjectionImpl* projectionPtr) {
+
+  const auto* const csProjectionPtr =
+    dynamic_cast<const CubedSphereProjectionBase*>(projectionPtr);
+
+  if (!csProjectionPtr) {
+    throw_Exception("Cannot cast " + projectionPtr->type()
+      + " to CubedSphereProjectionBase*.", Here());
+  }
+  return csProjectionPtr;
+}
+
+// -----------------------------------------------------------------------------
 // Jacobian2 class
 // -----------------------------------------------------------------------------
 
@@ -61,10 +78,13 @@ Jacobian2 Jacobian2::inverse() const {
 
 NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
 
+  // N must be greater than 2.
+  if (csGrid.N() < 2) {
+    throw_Exception("Jacobians can only be calculated for N > 1 .", Here());
+  }
+
   // Get projection.
-  csProjection_ =
-    dynamic_cast<const CubedSphereProjectionBase*>(csGrid.projection().get());
-  ATLAS_ASSERT(csProjection_);
+  csProjection_ = castProjection(csGrid.projection().get());
 
   // Get tiles.
   const auto& csTiles = csProjection_->getCubedSphereTiles();

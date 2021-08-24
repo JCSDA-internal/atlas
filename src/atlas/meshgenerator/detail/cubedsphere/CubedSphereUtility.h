@@ -6,7 +6,7 @@
  */
 
 #include "atlas/library/config.h"
-#include "atlas/util/Object.h"
+#include "atlas/runtime/Exception.h"
 #include "atlas/util/Point.h"
 
 #include "eckit/maths/Eigen.h"
@@ -16,8 +16,12 @@ class CubedSphereGrid;
 }
 
 namespace atlas {
+}
+
+namespace atlas {
 namespace projection {
 namespace detail {
+class ProjectionImpl;
 class CubedSphereProjectionBase;
 }
 }
@@ -29,6 +33,20 @@ namespace detail {
 namespace cubedsphere {
 
 using namespace projection::detail;
+
+/// Enum for cell stagger.
+struct Stagger {
+  enum s {CELL, NODE};
+};
+
+/// Get the stagger type from cubed sphere grid name.
+inline Stagger::s getStagger(const std::string& gridName) {
+  const auto staggerStr = gridName.substr(gridName.rfind("-") - 1, 1);
+  if (staggerStr == "C") return Stagger::CELL;
+  if (staggerStr == "L") return Stagger::NODE;
+  else throw_Exception(
+    "Cannot determine stagger for grid " + gridName + ".", Here());
+}
 
 /// Enum for (i, j, t) coordinate fields.
 struct Coordinates {
@@ -46,6 +64,9 @@ inline idx_t st2idx(size_t i) {return static_cast<idx_t>(i);}
 /// Cast idx_t to size_t.
 inline size_t idx2st(idx_t i) {return static_cast<size_t>(i);}
 
+/// Cast Projection to CubedSphereProjectionBase.
+const CubedSphereProjectionBase* castProjection(const ProjectionImpl* projectionPtr);
+
 /// Class to store (i, j) indices as a Point2 coordinate.
 class PointIJ : public Point2 {
 public:
@@ -56,29 +77,29 @@ public:
   inline PointIJ(idx_t i, idx_t j) :
     Point2(static_cast<double>(i), static_cast<double>(j)) {}
 
-  /// \{
+  /// @{
   ///  Return i or j by value.
   inline double i() const {return x_[0];}
   inline double j() const {return x_[1];}
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Return i or j by reference
   inline double& i() {return x_[0];}
   inline double& j() {return x_[1];}
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Round i or j to node index.
   inline idx_t iNode() const {return static_cast<idx_t>(std::round(i()));}
   inline idx_t jNode() const {return static_cast<idx_t>(std::round(j()));}
-  /// \}
+  /// @}
 
-  /// \{
+  /// @{
   /// Round i or j to cell index.
   inline idx_t iCell() const {return static_cast<idx_t>(std::floor(i()));}
   inline idx_t jCell() const {return static_cast<idx_t>(std::floor(j()));}
-  /// \}
+  /// @}
 
 };
 

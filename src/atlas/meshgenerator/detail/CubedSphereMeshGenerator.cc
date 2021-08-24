@@ -119,15 +119,6 @@ void CubedSphereMeshGenerator::generate(const Grid& grid,
     "with a cubedsphere grid.", Here());
   }
 
-  // Check for correct stagger
-  const auto gridName = grid.name();
-  const auto gridStagger = gridName.substr(gridName.rfind("-") - 1, 1);
-
-  if (gridStagger != "C") {
-    throw_Exception("CubedSphereMeshGenerator can only work with a"
-    "cell-centroid grid. Try NodalCubedSphereMeshGenerator instead.");
-  }
-
   // Cast grid to cubed sphere grid.
   const auto csGrid = CubedSphereGrid(grid);
 
@@ -194,6 +185,14 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
 
   using namespace detail::cubedsphere;
 
+
+  // Check for correct grid stagger.
+  const auto stagger = getStagger(csGrid.name());
+  if (stagger != Stagger::CELL) {
+    throw_Exception("CubedSphereMeshGenerator will only work with a"
+    "cell-centroid grid. Try NodalCubedSphereMeshGenerator instead.", Here());
+  }
+
   // Get dimensions of grid
   const auto N      = csGrid.N();
 
@@ -225,10 +224,7 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   constexpr auto undefinedGlobalIdx = -1;
 
   // Projection and tiles
-  const auto* const csProjection =
-    dynamic_cast<const projection::detail::CubedSphereProjectionBase*>(
-    csGrid.projection().get());
-  ATLAS_ASSERT(csProjection);
+  const auto* const csProjection = castProjection(csGrid.projection().get());
 
   // Get partition information.
   const auto nParts =   mpi::comm().size();

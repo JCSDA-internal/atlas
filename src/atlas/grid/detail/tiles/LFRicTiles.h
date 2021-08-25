@@ -16,12 +16,13 @@
 #include "atlas/grid/detail/tiles/Tiles.h"
 #include "atlas/util/Point.h"
 
+
 namespace atlas {
-namespace cubedspheretiles {
+namespace grid {
+namespace detail {
 
 class LFRicCubedSphereTiles : public CubedSphereTiles {
 public:
-
     // constructor
     LFRicCubedSphereTiles( const eckit::Parametrisation& );
 
@@ -29,37 +30,17 @@ public:
 
     virtual std::string type() const override { return static_type(); }
 
-    virtual std::array<std::array<double,6>,2> xy2abOffsets() const override;
+    virtual std::array<std::array<double, 6>, 2> xy2abOffsets() const override;
 
-    virtual std::array<std::array<double,6>,2> ab2xyOffsets() const override;
+    virtual std::array<std::array<double, 6>, 2> ab2xyOffsets() const override;
 
-    virtual void tile0Rotate( double xyz[] ) const override;
+    virtual void rotate( idx_t t, double xyz[] ) const override;
 
-    virtual void tile1Rotate( double xyz[] ) const override;
+    virtual void unrotate( idx_t t, double xyz[] ) const override;
 
-    virtual void tile2Rotate( double xyz[] ) const override;
+    virtual idx_t indexFromXY( const double xy[] ) const override;
 
-    virtual void tile3Rotate( double xyz[] ) const override;
-
-    virtual void tile4Rotate( double xyz[] ) const override;
-
-    virtual void tile5Rotate( double xyz[] ) const override;
-
-    virtual void tile0RotateInverse( double xyz[] ) const override;
-
-    virtual void tile1RotateInverse( double xyz[] ) const override;
-
-    virtual void tile2RotateInverse( double xyz[] ) const override;
-
-    virtual void tile3RotateInverse( double xyz[] ) const override;
-
-    virtual void tile4RotateInverse( double xyz[] ) const override;
-
-    virtual void tile5RotateInverse( double xyz[] ) const override;
-
-    virtual idx_t tileFromXY( const double xy[] ) const override;
-
-    virtual idx_t tileFromLonLat( const double lonlat[] ) const override;
+    virtual idx_t indexFromLonLat( const double lonlat[] ) const override;
 
     virtual void enforceXYdomain( double xy[] ) const override;
 
@@ -69,7 +50,7 @@ public:
 
 private:
     std::array<atlas::PointXY, 6> botLeftTile_{atlas::PointXY{0., -45.},   atlas::PointXY{90, -45},
-                                              atlas::PointXY{180., -45.}, atlas::PointXY{270, -45},
+                                               atlas::PointXY{180., -45.}, atlas::PointXY{270, -45},
                                               atlas::PointXY{0., 45.},    atlas::PointXY{0, -135.} };
 
     std::array<atlas::PointXY, 6> botRightTile_{atlas::PointXY{90., -45.},   atlas::PointXY{180., -45},
@@ -90,5 +71,6 @@ private:
 };
 
 
-}  // namespace cubedspheretiles
+}  // namespace detail
+}  // namespace grid
 }  // namespace atlas

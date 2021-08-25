@@ -10,8 +10,10 @@
 #include "atlas/field/FieldSet.h"
 #include "atlas/grid.h"
 #include "atlas/grid/Tiles.h"
+#include "atlas/grid/detail/tiles/Tiles.h"
 #include "atlas/mesh.h"
 #include "atlas/meshgenerator.h"
+#include "atlas/option.h"
 #include "atlas/output/Gmsh.h"
 #include "atlas/grid/Partitioner.h"
 #include "atlas/grid/detail/partitioner/CubedSpherePartitioner.h"
@@ -22,51 +24,47 @@
 #include "tests/AtlasTestEnvironment.h"
 
 namespace atlas {
-  namespace test {
+namespace test {
+namespace {
 
-    namespace {
+using grid::detail::partitioner::CubedSpherePartitioner;
 
-       using grid::detail::partitioner::CubedSpherePartitioner;
+void partition(const CubedSpherePartitioner & partitioner, const Grid & grid,
+               CubedSpherePartitioner::CubedSphere & cb,  std::vector<idx_t> & part)  {
 
-       void partition(const CubedSpherePartitioner & partitioner, const Grid & grid,
-                      CubedSpherePartitioner::CubedSphere & cb,  std::vector<idx_t> & part)  {
+    std::vector<CubedSpherePartitioner::CellInt> nodes( static_cast<std::size_t>(grid.size()) );
+    std::size_t n( 0 );
 
-           std::vector<CubedSpherePartitioner::CellInt> nodes( static_cast<std::size_t>(grid.size()) );
-           std::size_t n( 0 );
-
-
-
-           for (std::size_t it = 0; it < 6; ++it) {
-               for ( idx_t iy = 0; iy < cb.ny[it]; ++iy ) {
-                   for ( idx_t ix = 0; ix < cb.nx[it]; ++ix ) {
-                       nodes[n].t = static_cast<int>( it );
-                       nodes[n].x = static_cast<int>( ix );
-                       nodes[n].y = static_cast<int>( iy );
-                       nodes[n].n = static_cast<int>( n );
-                       ++n;
-                   }
-               }
-           }
-           partitioner.partition( cb, grid.size(), nodes.data(), part.data() );
-
-       }
+    for (std::size_t it = 0; it < 6; ++it) {
+        for ( idx_t iy = 0; iy < cb.ny[it]; ++iy ) {
+            for ( idx_t ix = 0; ix < cb.nx[it]; ++ix ) {
+                nodes[n].t = static_cast<int>( it );
+                nodes[n].x = static_cast<int>( ix );
+                nodes[n].y = static_cast<int>( iy );
+                nodes[n].n = static_cast<int>( n );
+                ++n;
+            }
+        }
     }
+    partitioner.partition( cb, grid.size(), nodes.data(), part.data() );
 
+}
+}
 
     CASE("cubedsphere_tile_constructor_test") {
 
       auto tileConfig1 = atlas::util::Config("type", "cubedsphere_lfric");
-      auto lfricTiles = atlas::CubedSphereTiles(tileConfig1);
+      auto lfricTiles = atlas::grid::CubedSphereTiles(tileConfig1);
       EXPECT(lfricTiles.type() == "cubedsphere_lfric");
 
       auto tileConfig2 = atlas::util::Config("type", "cubedsphere_fv3");
-      auto fv3Tiles = atlas::CubedSphereTiles(tileConfig2);
+      auto fv3Tiles = atlas::grid::CubedSphereTiles(tileConfig2);
       EXPECT(fv3Tiles.type() == "cubedsphere_fv3");
 
-      auto lfricTiles2 = atlas::CubedSphereTiles("cubedsphere_lfric");
+      auto lfricTiles2 = atlas::grid::CubedSphereTiles("cubedsphere_lfric");
       EXPECT(lfricTiles2.type() == "cubedsphere_lfric");
 
-      auto fv3Tiles2 = atlas::CubedSphereTiles("cubedsphere_fv3");
+      auto fv3Tiles2 = atlas::grid::CubedSphereTiles("cubedsphere_fv3");
       EXPECT(fv3Tiles.type() == "cubedsphere_fv3");
 
     }
@@ -174,7 +172,7 @@ namespace atlas {
     CASE("cubedsphere_tileCubePeriodicity_test") {
 
       auto tileConfig1 = atlas::util::Config("type", "cubedsphere_lfric");
-      auto lfricTiles = atlas::CubedSphereTiles(tileConfig1);
+      auto lfricTiles = atlas::grid::CubedSphereTiles(tileConfig1);
 
       // create a nodal cubed-sphere grid and check that no point are changed by
       // iterating through points.
@@ -188,7 +186,7 @@ namespace atlas {
       for ( auto crd : grid.xy() ) {
           atlas::PointXY initialXY{crd[XX], crd[YY]};
           double xy[2] = {initialXY.x(), initialXY.y()};
-          atlas::idx_t t = lfricTiles.tileFromXY(xy);
+          atlas::idx_t t = lfricTiles.indexFromXY(xy);
           atlas::PointXY finalXY = lfricTiles.tileCubePeriodicity(initialXY, t);
           EXPECT_APPROX_EQ(initialXY, finalXY);
           ++jn;

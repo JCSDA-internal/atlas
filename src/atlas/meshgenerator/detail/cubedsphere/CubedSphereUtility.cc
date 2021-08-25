@@ -169,7 +169,7 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
       const auto xy01Global = csTiles.tileCubePeriodicity(xy01Local, st2idx(t));
 
       // Get neighbour tile ID.
-      neighbours_[t].t_[k] = csTiles.tileFromXY(xy00Global.data());
+      neighbours_[t].t_[k] = csTiles.indexFromXY(xy00Global.data());
 
       // Set Jacobian of global xy with respect to local ij.
       const auto dxyGlobal_by_dij = Jacobian2(
@@ -274,7 +274,7 @@ std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
 
   // Correct for edge-ownership rules.
   xyGlobal = csTiles.tileCubePeriodicity(xyGlobal, tGlobal);
-  tGlobal = csTiles.tileFromXY(xyGlobal.data());
+  tGlobal = csTiles.indexFromXY(xyGlobal.data());
 
   return std::make_pair(xyGlobal, tGlobal);
 }

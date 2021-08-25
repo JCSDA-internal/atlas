@@ -81,7 +81,7 @@ void NodalCubedSphereMeshGenerator::generate( const Grid& grid, const grid::Dist
     using namespace detail::cubedsphere;
 
     const int N      = csgrid.N();
-    const int nTiles = csgrid.GetNTiles();
+    const int nTiles = csgrid.tiles().size();
 
 
     // N must be greater than 1.

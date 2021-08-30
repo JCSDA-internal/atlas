@@ -326,19 +326,12 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     const GlobalCell* remoteCell{};
   };
 
-  // Define ij bounding box for each face (this partition only).
-  struct BoundingBox {
-    idx_t iBegin{std::numeric_limits<idx_t>::max()};
-    idx_t iEnd{std::numeric_limits<idx_t>::min()};
-    idx_t jBegin{std::numeric_limits<idx_t>::max()};
-    idx_t jEnd{std::numeric_limits<idx_t>::min()};
-  };
 
   // Make list of all possible cells.
   auto globalCells = std::vector<GlobalCell>(idx2st(nCellsArray));
 
   // Initialise bounding box.
-  auto cellBounds = std::vector<BoundingBox>(idx2st(6));
+  auto cellBounds = std::array<BoundingBox, 6>{};
 
   // Set xy and tji grid iterators.
   auto tjiIt = csGrid.tij().begin();
@@ -831,9 +824,9 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     nodesLonLat(nodeLocalIdx, LAT) = lonLat.lat();
 
     // Set tij.
-    nodesIjt(nodeLocalIdx, Coordinates::I) = node.i;
-    nodesIjt(nodeLocalIdx, Coordinates::J) = node.j;
-    nodesIjt(nodeLocalIdx, Coordinates::T) = node.t;
+    nodesIjt(nodeLocalIdx, CSIndex::I) = node.i;
+    nodesIjt(nodeLocalIdx, CSIndex::J) = node.j;
+    nodesIjt(nodeLocalIdx, CSIndex::T) = node.t;
 
     // Set flags.
     Topology::reset(nodesFlags(nodeLocalIdx));
@@ -944,9 +937,9 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
     cellsPart(cellLocalIdx) = cell.part;
 
     // Set ijt.
-    cellsIjt(cellLocalIdx, Coordinates::I) = cell.i;
-    cellsIjt(cellLocalIdx, Coordinates::J) = cell.j;
-    cellsIjt(cellLocalIdx, Coordinates::T) = cell.t;
+    cellsIjt(cellLocalIdx, CSIndex::I) = cell.i;
+    cellsIjt(cellLocalIdx, CSIndex::J) = cell.j;
+    cellsIjt(cellLocalIdx, CSIndex::T) = cell.t;
 
     // Set flags.
     Topology::reset(cellsFlags(cellLocalIdx));
@@ -979,14 +972,8 @@ void CubedSphereMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid,
   mesh.metadata().set("halo", nHalo);
   mesh.metadata().set("mesh_type", "cubed_sphere");
 
-  mesh.nodes().global_index().metadata().set("human_readable", true);
-  mesh.nodes().global_index().metadata().set("min", 1);
-  mesh.nodes().global_index().metadata().set("max", nNodesTotal);
   mesh.nodes().metadata().set("parallel", true);
 
-  mesh.cells().global_index().metadata().set("human_readable", true);
-  mesh.cells().global_index().metadata().set("min", 1);
-  mesh.cells().global_index().metadata().set("max", nCellsTotal);
   mesh.cells().metadata().set("parallel", true);
 
   return;

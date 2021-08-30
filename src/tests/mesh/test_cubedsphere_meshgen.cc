@@ -8,6 +8,7 @@
 #include "atlas/array/MakeView.h"
 #include "atlas/functionspace/NodeColumns.h"
 #include "atlas/functionspace/CellColumns.h"
+#include "atlas/functionspace/CubedSphereCellColumns.h"
 #include "atlas/field/FieldSet.h"
 #include "atlas/grid.h"
 #include "atlas/grid/CubedSphereGrid.h"
@@ -289,6 +290,107 @@ CASE("cubedsphere_mesh_test") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 3);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 3);
   }
+}
+
+void testFunctionSpace(const functionspace::CubedSphereCellColumns& functionspace) {
+
+  // Make field.
+  auto field = functionspace.createField<double>(util::Config("name", "test field"));
+  auto fieldView = array::make_view<double, 1>(field);
+
+  // Get view of lonlat.
+  const auto lonLatView = array::make_view<double, 2>(functionspace.mesh().cells().field("lonlat"));
+
+  // Get view of halo.
+  const auto haloView = array::make_view<idx_t, 1>(functionspace.mesh().cells().halo());
+
+  // Loop over all non halo elements of test field.
+  idx_t testFuncCallCount = 0;
+  functionspace.for_each(
+    [&](idx_t index, idx_t i, idx_t j, idx_t t) {
+
+      // Make sure index matches ijt.
+      ATLAS_ASSERT(index == functionspace.index(i, j, t));
+
+      // Check that indices of "+" stencil are valid.
+      const auto badIdx = functionspace.invalid_index();
+      ATLAS_ASSERT(functionspace.index(i - 1, j    , t) != badIdx);
+      ATLAS_ASSERT(functionspace.index(i + 1, j    , t) != badIdx);
+      ATLAS_ASSERT(functionspace.index(i    , j - 1, t) != badIdx);
+      ATLAS_ASSERT(functionspace.index(i    , j + 1, t) != badIdx);
+
+      // Make sure we're avoiding halos.
+      ATLAS_ASSERT(!haloView(index));
+
+      // Set field values.
+      fieldView(index) = testFunction(lonLatView(index, LON), lonLatView(index, LAT));
+      ++testFuncCallCount;
+
+  });
+
+  // Make sure call count is less than functionspace.size() as we skipped halos.
+  ATLAS_ASSERT(testFuncCallCount < functionspace.size());
+
+  // Perform halo exchange.
+  functionspace.haloExchange(field);
+
+  // Loop over elements including halo
+  testFuncCallCount = 0;
+  functionspace.for_each(
+    [&](idx_t index, idx_t i, idx_t j, idx_t t) {
+
+      // Make sure index matches ijt.
+      ATLAS_ASSERT(index == functionspace.index(i, j, t));
+
+      // Set field values.
+      ATLAS_ASSERT(is_approximately_equal(
+        fieldView(index), testFunction(lonLatView(index, LON), lonLatView(index, LAT))));
+      ++testFuncCallCount;
+
+  }, true);
+
+  // Make sure call count is equal to functionspace.size().
+  ATLAS_ASSERT(testFuncCallCount == functionspace.size());
+
+
+}
+
+CASE("cubedsphere_mesh_functionspace") {
+
+  // Set grid.
+  const auto grid = Grid("CS-LFR-C-12");
+
+  // Set mesh config.
+  const auto meshConfigEqualRegions =
+    util::Config("partitioner", "equal_regions") |
+    util::Config("halo", 1);
+  const auto meshConfigCubedSphere =
+    util::Config("partitioner", "cubed_sphere") |
+    util::Config("halo", 1);
+
+  // Set mesh generator.
+  const auto meshGenEqualRegions = MeshGenerator("cubedsphere", meshConfigEqualRegions);
+  const auto meshGenCubedSphere = MeshGenerator("cubedsphere", meshConfigCubedSphere);
+
+  // Set mesh
+  const auto meshEqualRegions = meshGenEqualRegions.generate(grid);
+  const auto meshCubedSphere = meshGenCubedSphere.generate(grid);
+
+  // Set functionspace.
+  const auto functionspaceEqualRegions =
+    functionspace::CubedSphereCellColumns(meshEqualRegions);
+  const auto functionspaceCubedSphere =
+    functionspace::CubedSphereCellColumns(meshCubedSphere);
+
+  // test functionspaces.
+  SECTION("equal_regions") {
+    testFunctionSpace(functionspaceEqualRegions);
+  }
+  SECTION("cubed_sphere") {
+    testFunctionSpace(functionspaceCubedSphere);
+  }
+
+
 }
 
 

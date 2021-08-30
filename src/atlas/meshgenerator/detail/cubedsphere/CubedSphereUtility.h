@@ -5,6 +5,8 @@
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
  */
 
+#pragma once
+
 #include "atlas/library/config.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/util/Point.h"
@@ -34,6 +36,14 @@ namespace cubedsphere {
 
 using namespace projection::detail;
 
+/// Define ij bounding box for each tile.
+struct BoundingBox {
+  idx_t iBegin{std::numeric_limits<idx_t>::max()};
+  idx_t iEnd{std::numeric_limits<idx_t>::min()};
+  idx_t jBegin{std::numeric_limits<idx_t>::max()};
+  idx_t jEnd{std::numeric_limits<idx_t>::min()};
+};
+
 /// Enum for cell stagger.
 struct Stagger {
   enum s {CELL, NODE};
@@ -49,7 +59,7 @@ inline Stagger::s getStagger(const std::string& gridName) {
 }
 
 /// Enum for (i, j, t) coordinate fields.
-struct Coordinates {
+struct CSIndex {
   enum k : idx_t {I, J, T};
 };
 

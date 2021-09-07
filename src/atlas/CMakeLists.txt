@@ -442,6 +442,7 @@ functionspace/Spectral.cc
 functionspace/PointCloud.h
 functionspace/PointCloud.cc
 functionspace/CubedSphereCellColumns.h
+functionspace/CubedSphereNodeColumns.h
 functionspace/detail/FunctionSpaceImpl.h
 functionspace/detail/FunctionSpaceImpl.cc
 functionspace/detail/FunctionSpaceInterface.h

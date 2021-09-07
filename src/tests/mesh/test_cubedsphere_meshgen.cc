@@ -9,6 +9,7 @@
 #include "atlas/functionspace/NodeColumns.h"
 #include "atlas/functionspace/CellColumns.h"
 #include "atlas/functionspace/CubedSphereCellColumns.h"
+#include "atlas/functionspace/CubedSphereNodeColumns.h"
 #include "atlas/field/FieldSet.h"
 #include "atlas/grid.h"
 #include "atlas/grid/CubedSphereGrid.h"
@@ -292,17 +293,19 @@ CASE("cubedsphere_mesh_test") {
   }
 }
 
-void testFunctionSpace(const functionspace::CubedSphereCellColumns& functionspace) {
+template<typename FSpace>
+void testFunctionSpace(const FSpace& functionspace) {
 
   // Make field.
-  auto field = functionspace.createField<double>(util::Config("name", "test field"));
+  auto field = functionspace.template createField<double>(
+    util::Config("name", "test field"));
   auto fieldView = array::make_view<double, 1>(field);
 
   // Get view of lonlat.
-  const auto lonLatView = array::make_view<double, 2>(functionspace.mesh().cells().field("lonlat"));
+  const auto lonLatView = array::make_view<double, 2>(functionspace.lonlat());
 
-  // Get view of halo.
-  const auto haloView = array::make_view<idx_t, 1>(functionspace.mesh().cells().halo());
+  // Get view of halo/ghosts.
+  const auto ghostView = array::make_view<idx_t, 1>(functionspace.ghost());
 
   // Loop over all non halo elements of test field.
   idx_t testFuncCallCount = 0;
@@ -320,7 +323,7 @@ void testFunctionSpace(const functionspace::CubedSphereCellColumns& functionspac
       ATLAS_ASSERT(functionspace.index(i    , j + 1, t) != badIdx);
 
       // Make sure we're avoiding halos.
-      ATLAS_ASSERT(!haloView(index));
+      ATLAS_ASSERT(!ghostView(index));
 
       // Set field values.
       fieldView(index) = testFunction(lonLatView(index, LON), lonLatView(index, LAT));
@@ -377,17 +380,27 @@ CASE("cubedsphere_mesh_functionspace") {
   const auto meshCubedSphere = meshGenCubedSphere.generate(grid);
 
   // Set functionspace.
-  const auto functionspaceEqualRegions =
+  const auto equalRegionsCellColumns =
     functionspace::CubedSphereCellColumns(meshEqualRegions);
-  const auto functionspaceCubedSphere =
+  const auto cubedSphereCellColumns =
     functionspace::CubedSphereCellColumns(meshCubedSphere);
+  const auto equalRegionsNodeColumns =
+    functionspace::CubedSphereNodeColumns(meshEqualRegions);
+  const auto cubedSphereNodeColumns =
+    functionspace::CubedSphereNodeColumns(meshCubedSphere);
 
   // test functionspaces.
-  SECTION("equal_regions") {
-    testFunctionSpace(functionspaceEqualRegions);
+  SECTION("CellColumns: equal_regions") {
+    testFunctionSpace(equalRegionsCellColumns);
   }
-  SECTION("cubed_sphere") {
-    testFunctionSpace(functionspaceCubedSphere);
+  SECTION("CellColumns: cubed_sphere") {
+    testFunctionSpace(cubedSphereCellColumns);
+  }
+  SECTION("NodeColumns: equal_regions") {
+    testFunctionSpace(equalRegionsNodeColumns);
+  }
+  SECTION("NodeColumns: cubed_sphere") {
+    testFunctionSpace(cubedSphereNodeColumns);
   }
 
 

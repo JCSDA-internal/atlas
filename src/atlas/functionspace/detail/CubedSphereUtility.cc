@@ -11,13 +11,14 @@ namespace atlas {
 namespace functionspace {
 namespace detail {
 
+CubedSphereUtility::~CubedSphereUtility() {};
 
-
-CubedSphereUtility::CubedSphereUtility(
-  idx_t halo, const Field& ijt, const Field& ghost) :
-  halo_(halo), ijtView_(array::make_view<idx_t, 2>(ijt)),
-  ghostView_(array::make_view<idx_t, 1>(ghost))
+CubedSphereUtility::CubedSphereUtility(const Field& ijt, const Field& ghost) :
+  ijt_(ijt), ghost_(ghost)
 {
+
+  // Make array view.
+  const auto ijtView_ = array::make_view<idx_t, 2>(ijt);
 
   // loop over ijt_ and find min and max ij bounds.
   for (idx_t index = 0; index < ijtView_.shape(0); ++index) {
@@ -36,8 +37,8 @@ CubedSphereUtility::CubedSphereUtility(
   for (idx_t t = 0; t < 6; ++t) {
 
     // Set data array.
-    const auto vecSize = (j_end_halo(t) - j_begin_halo(t))
-                       * (i_end_halo(t) - i_begin_halo(t));
+    const auto vecSize = (j_end(t) - j_begin(t))
+                       * (i_end(t) - i_begin(t));
     ijtToIdx_.push_back(std::vector<idx_t>(idx2st(vecSize), invalid_index()));
 
   }
@@ -52,44 +53,22 @@ CubedSphereUtility::CubedSphereUtility(
   }
 }
 
-CubedSphereUtility::~CubedSphereUtility() {};
-
 idx_t CubedSphereUtility::i_begin(idx_t t) const {
-  tBoundsCheck(t);
-  return ijBounds_[idx2st(t)].iBegin + halo_;
-}
-
-idx_t CubedSphereUtility::i_end(idx_t t) const {
-  tBoundsCheck(t);
-  return ijBounds_[idx2st(t)].iEnd - halo_;
-}
-
-idx_t CubedSphereUtility::i_begin_halo(idx_t t) const {
   tBoundsCheck(t);
   return ijBounds_[idx2st(t)].iBegin;
 }
 
-idx_t CubedSphereUtility::i_end_halo(idx_t t) const {
+idx_t CubedSphereUtility::i_end(idx_t t) const {
   tBoundsCheck(t);
   return ijBounds_[idx2st(t)].iEnd;
 }
 
 idx_t CubedSphereUtility::j_begin(idx_t t) const {
   tBoundsCheck(t);
-  return ijBounds_[idx2st(t)].jBegin + halo_;
-}
-
-idx_t CubedSphereUtility::j_end(idx_t t) const {
-  tBoundsCheck(t);
-  return ijBounds_[idx2st(t)].jEnd - halo_;
-}
-
-idx_t CubedSphereUtility::j_begin_halo(idx_t t) const {
-  tBoundsCheck(t);
   return ijBounds_[idx2st(t)].jBegin;
 }
 
-idx_t CubedSphereUtility::j_end_halo(idx_t t) const {
+idx_t CubedSphereUtility::j_end(idx_t t) const {
   tBoundsCheck(t);
   return ijBounds_[idx2st(t)].jEnd;
 }
@@ -103,25 +82,29 @@ idx_t CubedSphereUtility::index(idx_t i, idx_t j, idx_t t) const {
   return ijtToIdx_[idx2st(t)][vecIndex(i, j, t)];
 }
 
+Field CubedSphereUtility::ijt() const {
+  return ijt_;
+}
+
 void CubedSphereUtility::tBoundsCheck(idx_t t) const {
   if (t < 0 or t > 5) throw_OutOfRange("t", t, 6);
 }
 
 void CubedSphereUtility::jBoundsCheck(idx_t j, idx_t t) const {
-  const auto jSize = j_end_halo(t) - j_begin_halo(t);
-  j -= j_begin_halo(t);
+  const auto jSize = j_end(t) - j_begin(t);
+  j -= j_begin(t);
   if (j < 0 or j >= jSize) throw_OutOfRange("j - jMin", j, jSize);
 }
 
 void CubedSphereUtility::iBoundsCheck(idx_t i, idx_t t) const {
-  const auto iSize = i_end_halo(t) - i_begin_halo(t);
-  i -= i_begin_halo(t);
+  const auto iSize = i_end(t) - i_begin(t);
+  i -= i_begin(t);
   if (i < 0 or i >= iSize) throw_OutOfRange("i - iMin", i, iSize);
 }
 
 size_t CubedSphereUtility::vecIndex(idx_t i, idx_t j, idx_t t) const {
-  return idx2st((j - j_begin_halo(t)) * (i_end_halo(t) - i_begin_halo(t))
-               + i - i_begin_halo(t));
+  return idx2st((j - j_begin(t)) * (i_end(t) - i_begin(t))
+               + i - i_begin(t));
 }
 
 

@@ -18,27 +18,37 @@ namespace functionspace {
 class CubedSphereCellColumns : public functionspace::CellColumns,
   public detail::CubedSphereUtility {
 
-  using CellColumns::CellColumns;
-
 public:
+
+  inline CubedSphereCellColumns() : CellColumns(), CubedSphereUtility() {}
+
   inline CubedSphereCellColumns(const FunctionSpace& functionSpace) :
     CellColumns(functionSpace), CubedSphereUtility(
-      this->mesh().metadata().get<idx_t>("halo"),
       this->mesh().cells().field("ijt"),
       this->mesh().cells().halo()) {}
 
   inline CubedSphereCellColumns(const Mesh& mesh,
     const eckit::Configuration& configuration) :
     CellColumns(mesh, configuration), CubedSphereUtility(
-      this->mesh().metadata().get<idx_t>("halo"),
       this->mesh().cells().field("ijt"),
       this->mesh().cells().halo()) {}
 
   inline CubedSphereCellColumns(const Mesh& mesh) :
     CellColumns(mesh), CubedSphereUtility(
-      this->mesh().metadata().get<idx_t>("halo"),
       this->mesh().cells().field("ijt"),
       this->mesh().cells().halo()) {}
+
+  inline Field xy() const {
+    return mesh().cells().field("xy");
+  }
+
+  inline Field lonlat() const {
+    return mesh().cells().field("lonlat");
+  }
+
+  inline Field ghost() const {
+    return mesh().cells().halo();
+  }
 
 };
 

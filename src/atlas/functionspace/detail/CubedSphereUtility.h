@@ -29,41 +29,40 @@ class CubedSphereUtility
 
 public:
 
-  CubedSphereUtility(idx_t halo, const Field& ijt, const Field& ghost);
+  CubedSphereUtility() = default;
+  CubedSphereUtility(const Field& ijt, const Field& ghost);
   virtual ~CubedSphereUtility() = 0;
 
   /// Invalid index.
   static constexpr idx_t invalid_index() {
     return -1;}
 
-  /// i lower bound for tile t
-  idx_t i_begin(idx_t t) const;
-  /// i upper bound for tile t
+  /// i lower bound for tile t (including halo)
+  idx_t i_begin(idx_t) const;
+  /// i lower bound for tile t (including halo)
   idx_t i_end(idx_t t) const;
 
-  /// i lower bound for tile t (including halo)
-  idx_t i_begin_halo(idx_t) const;
-  /// i lower bound for tile t (including halo)
-  idx_t i_end_halo(idx_t t) const;
-
-  /// j lower bound for tile t
+  /// j lower bound for tile t (including halo)
   idx_t j_begin(idx_t t) const;
-  /// j upper bound for tile t
+  /// j lower bound for tile t (including halo)
   idx_t j_end(idx_t t) const;
-
-  /// j lower bound for tile t (including halo)
-  idx_t j_begin_halo(idx_t t) const;
-  /// j lower bound for tile t (including halo)
-  idx_t j_end_halo(idx_t t) const;
 
   /// Return array_view index for (i, j, t).
   idx_t index(idx_t i, idx_t j, idx_t t) const;
+
+  /// Return ijt field.
+  Field ijt() const;
 
   /// Apply functor f(index, i, j, t) to all valid (i, j, t) triplets.
   /// Assumes user has not modified mesh.
   template<typename functor>
   void for_each(const functor& f, bool include_halo = false)  const {
 
+    // make array views.
+    const auto ijtView_   = array::make_view<idx_t, 2>(ijt_);
+    const auto ghostView_ = array::make_view<idx_t, 1>(ghost_);
+
+    // Loop over elements.
     for (idx_t index = 0; index < ijtView_.shape(0); ++index) {
 
       if (!include_halo and ghostView_(index)) break;
@@ -87,9 +86,6 @@ private:
   // Row-major index of ijtToidx vectors.
   size_t vecIndex(idx_t i, idx_t j, idx_t t) const;
 
-  // Halo size.
-  idx_t halo_;
-
   // Index storage vectors.
   std::vector<std::vector<idx_t>> ijtToIdx_;
 
@@ -97,11 +93,10 @@ private:
   std::array<BoundingBox, 6> ijBounds_;
 
   // ijt field.
-  array::ArrayView<idx_t, 2> ijtView_;
+  Field ijt_;
 
   // ghost field.
-  array::ArrayView<idx_t, 1> ghostView_;
-
+  Field ghost_;
 
 };
 

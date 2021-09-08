@@ -5,6 +5,8 @@
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
  */
 
+#pragma once
+
 #include "atlas/library/config.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/util/Point.h"
@@ -41,7 +43,7 @@ struct Stagger {
 
 /// Get the stagger type from cubed sphere grid name.
 inline Stagger::s getStagger(const std::string& gridName) {
-  const auto staggerStr = gridName.substr(gridName.rfind("-") - 1, 1);
+  const std::string staggerStr = gridName.substr(gridName.rfind("-") - 1, 1);
   if (staggerStr == "C") return Stagger::CELL;
   if (staggerStr == "L") return Stagger::NODE;
   else throw_Exception(
@@ -57,12 +59,6 @@ struct Coordinates {
 struct TileEdge {
   enum k : size_t {LEFT, BOTTOM, RIGHT, TOP, UNDEFINED};
 };
-
-/// Cast size_t to idx_t.
-inline idx_t st2idx(size_t i) {return static_cast<idx_t>(i);}
-
-/// Cast idx_t to size_t.
-inline size_t idx2st(idx_t i) {return static_cast<size_t>(i);}
 
 /// Cast Projection to CubedSphereProjectionBase.
 const CubedSphereProjectionBase* castProjection(const ProjectionImpl* projectionPtr);
@@ -102,6 +98,12 @@ public:
   /// @}
 
 };
+
+/// (PointXY, t) tuple def.
+using PointXYT = std::pair<PointXY, idx_t>;
+
+/// (PointIJ, t) tuple def.
+using PointIJT = std::pair<PointIJ, idx_t>;
 
 /// \brief   Jacobian class for 2 dimensional vector fields.
 ///

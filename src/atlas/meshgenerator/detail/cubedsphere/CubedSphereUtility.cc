@@ -105,15 +105,15 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
 
   // Loop over grid points.
   auto tijIt = csGrid.tij().begin();
-  for (const auto& xy : csGrid.xy()) {
+  for (const PointXY& xy : csGrid.xy()) {
 
-    const auto t = idx2st((*tijIt).t());
-    const auto i = (*tijIt).i();
-    const auto j = (*tijIt).j();
+    const auto t = static_cast<size_t>((*tijIt).t());
+    const idx_t i = (*tijIt).i();
+    const idx_t j = (*tijIt).j();
 
-    if      (i == 0 and j == 0) xy00[t] = xy;
-    else if (i == 1 and j == 0) xy10[t] = xy;
-    else if (i == 0 and j == 1) xy01[t] = xy;
+    if      (i == 0  && j == 0) xy00[t] = xy;
+    else if (i == 1  && j == 0) xy10[t] = xy;
+    else if (i == 0  && j == 1) xy01[t] = xy;
 
     ++tijIt;
   }
@@ -128,7 +128,7 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
     xy00_[t] = xy00[t] + dxy_by_dij_[t] * PointIJ(-0.5, -0.5);
 
     // Neighbour assignment lambda.
-    const auto neighbourAssignment = [&](TileEdge::k k){
+    const auto neighbourAssignment = [&](TileEdge::k k) -> void {
 
       // Shift points in to neighbouring tiles.
       PointIJ ijDisplacement;
@@ -159,21 +159,24 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
       const PointXY xyDisplacement = dxy_by_dij_[t] * ijDisplacement;
 
       // Get neighbour xy points in xy space local to tile.
-      const auto xy00Local = xy00[t] + xyDisplacement;
-      const auto xy10Local = xy10[t] + xyDisplacement;
-      const auto xy01Local = xy01[t] + xyDisplacement;
+      const PointXY xy00Local = xy00[t] + xyDisplacement;
+      const PointXY xy10Local = xy10[t] + xyDisplacement;
+      const PointXY xy01Local = xy01[t] + xyDisplacement;
 
       // Convert from local xy to global xy.
-      const auto xy00Global = csTiles.tileCubePeriodicity(xy00Local, st2idx(t));
-      const auto xy10Global = csTiles.tileCubePeriodicity(xy10Local, st2idx(t));
-      const auto xy01Global = csTiles.tileCubePeriodicity(xy01Local, st2idx(t));
+      const PointXY xy00Global =
+        csTiles.tileCubePeriodicity(xy00Local, static_cast<idx_t>(t));
+      const PointXY xy10Global =
+        csTiles.tileCubePeriodicity(xy10Local, static_cast<idx_t>(t));
+      const PointXY xy01Global =
+        csTiles.tileCubePeriodicity(xy01Local, static_cast<idx_t>(t));
 
       // Get neighbour tile ID.
       neighbours_[t].t_[k] = csTiles.indexFromXY(xy00Global.data());
 
       // Set Jacobian of global xy with respect to local ij.
-      const auto dxyGlobal_by_dij = Jacobian2(
-        xy00Global, xy10Global, xy01Global);
+      const auto dxyGlobal_by_dij =
+        Jacobian2(xy00Global, xy10Global, xy01Global);
 
       // Chain rule to get Jacobian with respect to local xy.
       neighbours_[t].dxyGlobal_by_dxyLocal_[k] =
@@ -200,32 +203,32 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
 PointXY NeighbourJacobian::xy(const PointIJ& ij, idx_t t) const {
 
   // Get jacobian.
-  const auto& jac = dxy_by_dij_[idx2st(t)];
-  const auto& xy00 = xy00_[idx2st(t)];
+  const Jacobian2& jac = dxy_by_dij_[static_cast<size_t>(t)];
+  const PointXY& xy00 = xy00_[static_cast<size_t>(t)];
 
   // Return ij
   return xy00 + jac * ij;
 }
 
-PointXY NeighbourJacobian::xy(const std::pair<PointIJ, idx_t>& ijt) const {
+PointXY NeighbourJacobian::xy(const PointIJT& ijt) const {
   return xy(ijt.first, ijt.second);
 }
 
 PointIJ NeighbourJacobian::ij(const PointXY& xy, idx_t t) const {
 
   // Get jacobian.
-  const auto& jac = dij_by_dxy_[idx2st(t)];
-  const auto& xy00 = xy00_[idx2st(t)];
+  const Jacobian2& jac = dij_by_dxy_[static_cast<size_t>(t)];
+  const PointXY& xy00 = xy00_[static_cast<size_t>(t)];
 
   // Return ij
   return jac * (xy - xy00);
 }
 
-PointIJ NeighbourJacobian::ij(const std::pair<PointXY, idx_t>& xyt) const {
+PointIJ NeighbourJacobian::ij(const PointXYT& xyt) const {
   return ij(xyt.first, xyt.second);
 }
 
-std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
+PointXYT NeighbourJacobian::xyLocalToGlobal(
   const PointXY& xyLocal, idx_t tLocal) const {
 
   // The tileCubePeriodicity method fails when extrapolating along an unowned
@@ -239,7 +242,7 @@ std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
   idx_t tGlobal;
 
   // Get ij.
-  const auto ijLocal = ij(xyLocal, tLocal);
+  const PointIJ ijLocal = ij(xyLocal, tLocal);
 
   // Exclude invalid halo corners.
   ATLAS_ASSERT(ijCross(ijLocal));
@@ -261,12 +264,15 @@ std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
     else if (ijLocal.jNode() > N_) k = TileEdge::TOP;
 
     // Get reference points and jacobian.
-    const auto& xy00Local_ = neighbours_[idx2st(tLocal)].xy00Local_[k];
-    const auto& xy00Global_ = neighbours_[idx2st(tLocal)].xy00Global_[k];
-    const auto& jac = neighbours_[idx2st(tLocal)].dxyGlobal_by_dxyLocal_[k];
+    const PointXY& xy00Local_ =
+      neighbours_[static_cast<size_t>(tLocal)].xy00Local_[k];
+    const PointXY& xy00Global_ =
+      neighbours_[static_cast<size_t>(tLocal)].xy00Global_[k];
+    const Jacobian2& jac =
+      neighbours_[static_cast<size_t>(tLocal)].dxyGlobal_by_dxyLocal_[k];
 
     // Get t.
-    tGlobal =  neighbours_[idx2st(tLocal)].t_[k];
+    tGlobal = neighbours_[static_cast<size_t>(tLocal)].t_[k];
 
     // Calculate global xy.
     xyGlobal = xy00Global_ + jac * (xyLocal - xy00Local_);
@@ -279,39 +285,39 @@ std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
   return std::make_pair(xyGlobal, tGlobal);
 }
 
-std::pair<PointXY, idx_t> NeighbourJacobian::xyLocalToGlobal(
-  const std::pair<PointXY, idx_t>& xytLocal) const {
+PointXYT NeighbourJacobian::xyLocalToGlobal(
+  const PointXYT& xytLocal) const {
   return xyLocalToGlobal(xytLocal.first, xytLocal.second);
 }
 
-std::pair<PointIJ, idx_t> NeighbourJacobian::ijLocalToGlobal(
+PointIJT NeighbourJacobian::ijLocalToGlobal(
   const PointIJ &ijLocal, idx_t tLocal) const {
 
   // Use xyLocalToGlobal method to take care of this.
 
   // Get global xyt.
-  auto xytGlobal = xyLocalToGlobal(xy(ijLocal, tLocal), tLocal);
+  PointXYT xytGlobal = xyLocalToGlobal(xy(ijLocal, tLocal), tLocal);
 
   // convert to ijt
   return std::make_pair(ij(xytGlobal), xytGlobal.second);
 }
 
-std::pair<PointIJ, idx_t> NeighbourJacobian::ijLocalToGlobal(
-  const std::pair<PointIJ, idx_t>& ijtLocal) const {
+PointIJT NeighbourJacobian::ijLocalToGlobal(
+  const PointIJT& ijtLocal) const {
   return ijLocalToGlobal(ijtLocal.first, ijtLocal.second);
 }
 
 bool NeighbourJacobian::ijInterior(const PointIJ& ij) const {
-  return ij.iNode() >= 0 and ij.iNode() <= N_ and
-         ij.jNode() >= 0 and ij.jNode() <= N_;
+  return ij.iNode() >= 0  && ij.iNode() <= N_ and
+         ij.jNode() >= 0  && ij.jNode() <= N_;
 }
 
 bool NeighbourJacobian::ijCross(const PointIJ& ij) const {
 
-  const bool inCorner = (ij.iNode() < 0  and ij.jNode() < 0 ) or // bottom-left corner.
-                        (ij.iNode() > N_ and ij.jNode() < 0 ) or // bottom-right corner.
-                        (ij.iNode() > N_ and ij.jNode() > N_) or // top-right corner.
-                        (ij.iNode() < 0  and ij.jNode() > N_);   // top-left corner.
+  const bool inCorner = (ij.iNode() < 0   && ij.jNode() < 0 ) || // bottom-left corner.
+                        (ij.iNode() > N_  && ij.jNode() < 0 ) || // bottom-right corner.
+                        (ij.iNode() > N_  && ij.jNode() > N_) || // top-right corner.
+                        (ij.iNode() < 0   && ij.jNode() > N_);   // top-left corner.
   return !inCorner;
 }
 

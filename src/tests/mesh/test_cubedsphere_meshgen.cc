@@ -286,8 +286,8 @@ CASE("cubedsphere_mesh_test") {
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 2);
   }
   SECTION("halo = 3") {
-    testHaloExchange("CS-LFR-C-12", "equal_regions", 3);
-    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 3);
+    testHaloExchange("CS-LFR-C-120", "equal_regions", 3);
+    testHaloExchange("CS-LFR-C-120", "cubed_sphere", 3);
   }
 }
 

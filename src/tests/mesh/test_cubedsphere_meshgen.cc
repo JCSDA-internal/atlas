@@ -20,8 +20,9 @@
 #include "atlas/grid/detail/partitioner/CubedSpherePartitioner.h"
 #include "atlas/option.h"
 #include "atlas/util/CoordinateEnums.h"
-
 #include "tests/AtlasTestEnvironment.h"
+
+#include "eckit/mpi/Operation.h"
 
 namespace atlas {
 namespace test {
@@ -104,17 +105,17 @@ CASE("cubedsphere_mesh_jacobian_test") {
         const auto xytGlobal = jacobian.xyLocalToGlobal(xyLocal, t);
         const auto ijtGlobal = jacobian.ijLocalToGlobal(ij, t);
 
-        ATLAS_ASSERT(xyLocal == xyLocalKgo);
-        ATLAS_ASSERT(xytGlobal.first == xyGlobalKgo);
-        ATLAS_ASSERT(xytGlobal.second == tKgo);
-        ATLAS_ASSERT(ijtGlobal.first == ijGlobalKgo);
-        ATLAS_ASSERT(ijtGlobal.second == tKgo);
+        EXPECT(xyLocal == xyLocalKgo);
+        EXPECT(xytGlobal.first == xyGlobalKgo);
+        EXPECT(xytGlobal.second == tKgo);
+        EXPECT(ijtGlobal.first == ijGlobalKgo);
+        EXPECT(ijtGlobal.second == tKgo);
 
         // Check xy and ij transforms are consistent.
-        ATLAS_ASSERT(jacobian.ij((jacobian.xyLocalToGlobal(xyLocal, t))) ==
+        EXPECT(jacobian.ij((jacobian.xyLocalToGlobal(xyLocal, t))) ==
           jacobian.ijLocalToGlobal(ij, t).first);
 
-        ATLAS_ASSERT(jacobian.xy((jacobian.ijLocalToGlobal(ij, t))) ==
+        EXPECT(jacobian.xy((jacobian.ijLocalToGlobal(ij, t))) ==
           jacobian.xyLocalToGlobal(xyLocal, t).first);
 
       }
@@ -129,7 +130,7 @@ double testFunction(double lon, double lat) {
 
 
 void testHaloExchange(const std::string& gridStr, const std::string& partitionerStr,
-                     idx_t halo) {
+                     idx_t halo, bool output = true) {
 
   // Set grid.
   const auto grid = Grid(gridStr);
@@ -148,42 +149,6 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
   // Set function space.
   const auto nodeColumns = functionspace::NodeColumns(mesh);
   const auto cellColumns = functionspace::CellColumns(mesh);
-
-  // Make a field set of useful diagnostic quantities.
-
-  auto fieldSet = atlas::FieldSet{};
-  fieldSet.add(mesh.nodes().xy());
-  fieldSet.add(mesh.nodes().lonlat());
-  fieldSet.add(mesh.nodes().ghost());
-  fieldSet.add(mesh.nodes().halo());
-  fieldSet.add(mesh.nodes().remote_index());
-  fieldSet.add(mesh.nodes().partition());
-  fieldSet.add(mesh.nodes().global_index());
-  fieldSet.add(mesh.nodes().field("ijt"));
-
-  // Set gmsh config.
-  const auto gmshConfigXy =
-    util::Config("coordinates", "xy") |
-    util::Config("ghost", true);
-
-  const auto gmshConfigXyz =
-    util::Config("coordinates", "xyz") |
-    util::Config("ghost", true);
-
-  // Set gmsh objects.
-  const auto fileStr =
-   gridStr + "_" + partitionerStr + "_halo" + std::to_string(halo);
-  const auto gmshXy =
-   output::Gmsh(fileStr + "_xy.msh", gmshConfigXy);
-  const auto gmshXyz =
-   output::Gmsh(fileStr + "_xyz.msh", gmshConfigXyz);
-
-  // Write outputs.
-  gmshXy.write(mesh);
-  gmshXy.write(fieldSet, nodeColumns);
-
-  gmshXyz.write(mesh);
-  gmshXyz.write(fieldSet, nodeColumns);
 
   // ---------------------------------------------------------------------------
   // Test node columns halo exchange.
@@ -211,23 +176,24 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
 
   // Make sure that some of the field values were ghosts.
   if (halo > 0) {
-    ATLAS_ASSERT(testFuncCallCount < nodeColumns.size());
+    EXPECT(testFuncCallCount < nodeColumns.size());
   }
 
   nodeColumns.haloExchange(testField1);
 
   // Check all values after halo exchange.
+  double maxError = 0;
   for (idx_t i = 0; i < nodeColumns.size(); ++i) {
 
     // Test field and test function should be the same.
-    ATLAS_ASSERT(is_approximately_equal(
-      testView1(i), testFunction(lonLatView(i, LON), lonLatView(i, LAT))));
+    const double testVal = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
+    maxError = std::max(maxError, std::abs(testView1(i) - testVal));
 
   }
 
-  // Write fields.
-  gmshXy.write(testField1, nodeColumns);
-  gmshXyz.write(testField1, nodeColumns);
+  mpi::comm().allReduceInPlace(maxError, eckit::mpi::Operation::Code::MAX);
+  Log::info() << "Test field max error (NodeColumns) : " << maxError << std::scientific << std::endl;
+  EXPECT(maxError < 1e-12);
 
   // ---------------------------------------------------------------------------
   // Test cell columns halo exchange.
@@ -249,45 +215,103 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
     if (haloView(i)) break;
 
     testView2(i) = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
+    ++testFuncCallCount;
 
   }
 
   // Make sure that some of the field values were ghosts.
   if (halo > 0) {
-    ATLAS_ASSERT(testFuncCallCount < cellColumns.size());
+    EXPECT(testFuncCallCount < cellColumns.size());
   }
 
   cellColumns.haloExchange(testField2);
 
   // Check all values after halo exchange.
+  maxError = 0;
   for (idx_t i = 0; i < cellColumns.size(); ++i) {
 
     // Test field and test function should be the same.
-    ATLAS_ASSERT(is_approximately_equal(
-      testView2(i), testFunction(lonLatView(i, LON), lonLatView(i, LAT))));
+    const double testVal = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
+    maxError = std::max(maxError, std::abs(testView2(i) - testVal));
 
   }
 
+  mpi::comm().allReduceInPlace(maxError, eckit::mpi::Operation::Code::MAX);
+  Log::info() << "Test field max error (CellColumns) : " << maxError << std::scientific << std::endl;
+  EXPECT(maxError < 1e-12);
+
+
+  if (output) {
+
+      // Make a field set of useful diagnostic quantities.
+
+      auto nodeFields = atlas::FieldSet{};
+      nodeFields.add(mesh.nodes().xy());
+      nodeFields.add(mesh.nodes().lonlat());
+      nodeFields.add(mesh.nodes().ghost());
+      nodeFields.add(mesh.nodes().halo());
+      nodeFields.add(mesh.nodes().remote_index());
+      nodeFields.add(mesh.nodes().partition());
+      nodeFields.add(mesh.nodes().global_index());
+      nodeFields.add(mesh.nodes().field("ijt"));
+      nodeFields.add(testField1);
+
+      auto cellFields = FieldSet{};
+        cellFields.add(mesh.cells().halo());
+
+      // Set gmsh config.
+      const auto gmshConfigXy =
+        util::Config("coordinates", "xy") |
+        util::Config("ghost", true);
+
+      const auto gmshConfigXyz =
+        util::Config("coordinates", "xyz") |
+        util::Config("ghost", true);
+
+      // Set gmsh objects.
+      const auto fileStr =
+       gridStr + "_" + partitionerStr + "_halo" + std::to_string(halo);
+      const auto gmshXy =
+       output::Gmsh(fileStr + "_xy.msh", gmshConfigXy);
+      const auto gmshXyz =
+       output::Gmsh(fileStr + "_xyz.msh", gmshConfigXyz);
+
+      // Write outputs.
+      gmshXy.write(mesh);
+      gmshXy.write(nodeFields, nodeColumns);
+      gmshXy.write(cellFields, cellColumns);
+
+      gmshXyz.write(mesh);
+      gmshXyz.write(nodeFields, nodeColumns);
+      gmshXyz.write(cellFields, cellColumns);
+
+
+
+  }
 
 }
 
 CASE("cubedsphere_mesh_test") {
 
-  SECTION("halo = 0") {
+  SECTION("N12, halo = 0") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 0);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 0);
   }
-  SECTION("halo = 1") {
+  SECTION("N12, halo = 1") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 1);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 1);
   }
-  SECTION("halo = 2") {
+  SECTION("N12, halo = 2") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 2);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 2);
   }
-  SECTION("halo = 3") {
-    testHaloExchange("CS-LFR-C-120", "equal_regions", 3);
-    testHaloExchange("CS-LFR-C-120", "cubed_sphere", 3);
+  SECTION("N12, halo = 3") {
+    testHaloExchange("CS-LFR-C-12", "equal_regions", 3);
+    testHaloExchange("CS-LFR-C-12", "cubed_sphere", 3);
+  }
+  SECTION("Prime number mesh (N211)") {
+    testHaloExchange("CS-LFR-C-211", "equal_regions", 1, false);
+    testHaloExchange("CS-LFR-C-211", "cubed_sphere", 1, false);
   }
 }
 

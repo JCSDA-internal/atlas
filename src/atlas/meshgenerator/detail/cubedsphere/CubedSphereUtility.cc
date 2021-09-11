@@ -51,6 +51,10 @@ Jacobian2::Jacobian2(const Point2& f00, const Point2& f10, const Point2& f01) :
 
 Jacobian2::Jacobian2(const Eigen::Matrix2d& data) : data_(data) {}
 
+Jacobian2 Jacobian2::operator*(double a) const {
+  return Jacobian2(data_ * a);
+}
+
 Point2 Jacobian2::operator*(const Point2& dx) const {
 
   // Declare result.
@@ -69,6 +73,10 @@ Jacobian2 Jacobian2::operator*(const Jacobian2& Jb) const {
 
 Jacobian2 Jacobian2::inverse() const {
   return Jacobian2(data_.inverse());
+}
+
+Jacobian2 Jacobian2::sign() const {
+  return Jacobian2(data_.array().sign().matrix());
 }
 
 
@@ -98,34 +106,60 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
   // Get grid size.
   N_ = csGrid.N();
 
+
+  // Get cell width.
+  const double cellWidth = 90. / N_;
+
   // Get xy of points (i = 0, j = 0), (i = 1, j = 0) and (i = 0, j = 1) on tiles.
   std::array<PointXY, 6> xy00;
   std::array<PointXY, 6> xy10;
   std::array<PointXY, 6> xy01;
 
   // Loop over grid points.
-  auto tijIt = csGrid.tij().begin();
+  auto ijtIt = csGrid.tij().begin();
   for (const PointXY& xy : csGrid.xy()) {
 
-    const auto t = static_cast<size_t>((*tijIt).t());
-    const idx_t i = (*tijIt).i();
-    const idx_t j = (*tijIt).j();
+    const idx_t i = (*ijtIt).i();
+    const idx_t j = (*ijtIt).j();
+    const auto t = static_cast<size_t>((*ijtIt).t());
 
     if      (i == 0  && j == 0) xy00[t] = xy;
     else if (i == 1  && j == 0) xy10[t] = xy;
     else if (i == 0  && j == 1) xy01[t] = xy;
 
-    ++tijIt;
+    ++ijtIt;
   }
 
   for (size_t t = 0; t < 6; ++t) {
 
     // Calculate tile Jacobians.
     dxy_by_dij_[t] = Jacobian2(xy00[t], xy10[t], xy01[t]);
-    dij_by_dxy_[t]  = dxy_by_dij_[t].inverse();
+
+    // Rescale by cell width (gains an extra couple of decimal places of precision).
+    dxy_by_dij_[t] = dxy_by_dij_[t].sign() * cellWidth;
+
+    // Get inverse.
+    dij_by_dxy_[t] = dxy_by_dij_[t].inverse();
 
     // Set xy00. Grid point needs moving to (i = 0, j = 0).
     xy00_[t] = xy00[t] + dxy_by_dij_[t] * PointIJ(-0.5, -0.5);
+
+    // Get other three corners so we can work out xy min/max.
+    const PointXY xyN0 = xy00_[t] + dxy_by_dij_[t] * PointIJ(N_, 0 );
+    const PointXY xyNN = xy00_[t] + dxy_by_dij_[t] * PointIJ(N_, N_);
+    const PointXY xy0N = xy00_[t] + dxy_by_dij_[t] * PointIJ(0 , N_);
+
+    // Get xy min/max.
+    std::tie(xyMin_[t].x(), xyMax_[t].x()) =
+      std::minmax({xy00_[t].x(), xyN0.x(), xyNN.x(), xy0N.x()});
+    std::tie(xyMin_[t].y(), xyMax_[t].y()) =
+      std::minmax({xy00_[t].y(), xyN0.y(), xyNN.y(), xy0N.y()});
+
+    // Round to nearest degree.
+    xyMin_[t].x() = std::round(xyMin_[t].x());
+    xyMax_[t].x() = std::round(xyMax_[t].x());
+    xyMin_[t].y() = std::round(xyMin_[t].y());
+    xyMax_[t].y() = std::round(xyMax_[t].y());
 
     // Neighbour assignment lambda.
     const auto neighbourAssignment = [&](TileEdge::k k) -> void {
@@ -175,8 +209,11 @@ NeighbourJacobian::NeighbourJacobian(const CubedSphereGrid& csGrid) {
       neighbours_[t].t_[k] = csTiles.indexFromXY(xy00Global.data());
 
       // Set Jacobian of global xy with respect to local ij.
-      const auto dxyGlobal_by_dij =
+      auto dxyGlobal_by_dij =
         Jacobian2(xy00Global, xy10Global, xy01Global);
+
+      // Rescale by cell width (gains an extra couple of decimal places of precision).
+      dxyGlobal_by_dij = dxyGlobal_by_dij.sign() * cellWidth;
 
       // Chain rule to get Jacobian with respect to local xy.
       neighbours_[t].dxyGlobal_by_dxyLocal_[k] =
@@ -244,18 +281,22 @@ PointXYT NeighbourJacobian::xyLocalToGlobal(
   // Get ij.
   const PointIJ ijLocal = ij(xyLocal, tLocal);
 
-  // Exclude invalid halo corners.
-  ATLAS_ASSERT(ijCross(ijLocal));
-
   // Get tiles.
   const auto& csTiles = csProjection_->getCubedSphereTiles();
 
   if (ijInterior(ijLocal)) {
-    // That was easy.
+
+    // We're within the tile boundary (possibly on an edge).
+
+    // Return local values if not on edge.
+    if (!ijEdge(ijLocal)) return std::make_pair(xyLocal, tLocal);
+
+    // We're on an edge. Will need to check with Tiles class.
     xyGlobal = xyLocal;
     tGlobal = tLocal;
   }
   else {
+    // We're outside the tile boundary.
     // Figure out which tile xy is on.
     TileEdge::k k;
     if      (ijLocal.iNode() < 0 ) k = TileEdge::LEFT;
@@ -277,6 +318,10 @@ PointXYT NeighbourJacobian::xyLocalToGlobal(
     // Calculate global xy.
     xyGlobal = xy00Global_ + jac * (xyLocal - xy00Local_);
   }
+
+  // Need to be very careful with floating point comparisons used in projection
+  // class. Move point on to edge if it is very close.
+  xyGlobal = snapToEdge(xyGlobal, tGlobal);
 
   // Correct for edge-ownership rules.
   xyGlobal = csTiles.tileCubePeriodicity(xyGlobal, tGlobal);
@@ -312,6 +357,13 @@ bool NeighbourJacobian::ijInterior(const PointIJ& ij) const {
          ij.jNode() >= 0  && ij.jNode() <= N_;
 }
 
+bool NeighbourJacobian::ijEdge(const PointIJ &ij) const {
+  return ijInterior(ij) && (ij.iNode() == 0  ||
+                            ij.iNode() == N_ ||
+                            ij.jNode() == 0  ||
+                            ij.jNode() == N_);
+}
+
 bool NeighbourJacobian::ijCross(const PointIJ& ij) const {
 
   const bool inCorner = (ij.iNode() < 0   && ij.jNode() < 0 ) || // bottom-left corner.
@@ -319,6 +371,26 @@ bool NeighbourJacobian::ijCross(const PointIJ& ij) const {
                         (ij.iNode() > N_  && ij.jNode() > N_) || // top-right corner.
                         (ij.iNode() < 0   && ij.jNode() > N_);   // top-left corner.
   return !inCorner;
+}
+
+PointXY NeighbourJacobian::snapToEdge(const PointXY& xy, idx_t t) const {
+
+  const auto nudgeValue = [](double a, double b) -> double {
+
+    // Set tolerance to machine epsilon * 360 degrees.
+    constexpr double tol = 360. * std::numeric_limits<double>::epsilon();
+
+    // If a is nearly equal to b, return b. Otherwise return a.
+    return std::abs(a - b) <= tol ? b : a;
+
+  };
+
+  // If point is near edge, place it exactly on edge.
+  const PointXY& xyMin = xyMin_[static_cast<size_t>(t)];
+  const PointXY& xyMax = xyMax_[static_cast<size_t>(t)];
+  return PointXY(nudgeValue(nudgeValue(xy.x(), xyMin.x()), xyMax.x()),
+                 nudgeValue(nudgeValue(xy.y(), xyMin.y()), xyMax.y()));
+
 }
 
 }

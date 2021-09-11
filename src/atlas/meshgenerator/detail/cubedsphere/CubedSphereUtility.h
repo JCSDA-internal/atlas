@@ -138,6 +138,9 @@ class Jacobian2 {
   /// Discrete point contructor (implicit dx).
   Jacobian2(const Point2& f00, const Point2& f10, const Point2& f01);
 
+  /// Jacobian-scalar multiplication.
+  Jacobian2 operator*(double a) const;
+
   /// Jacobian-vector multiplication.
   Point2 operator*(const Point2& dx) const;
 
@@ -146,6 +149,9 @@ class Jacobian2 {
 
   /// Inverse Jacobian (partial derivatives of x(f)).
   Jacobian2 inverse() const;
+
+  /// Get signed elements of matrix (i.e, 0, +1, -1).
+  Jacobian2 sign() const;
 
 private:
   // Data constructor.
@@ -199,11 +205,17 @@ public:
     ijLocalToGlobal(const std::pair<PointIJ, idx_t>& ijtLocal) const;
   /// @}
 
-  /// Return true if ij is interior to ([0, N], [0, N]).
+  /// Return true if ij is interior or on the edge of a tile.
   bool ijInterior(const PointIJ& ij) const;
+
+  /// Return true if ij is on the edge of a tile.
+  bool ijEdge(const PointIJ& ij) const;
 
   /// Return true if ij is in the valid "+" halo extension of at tile.
   bool ijCross(const PointIJ& ij) const;
+
+  /// Makes sure points near tile edges are *exactly* on the edge.
+  PointXY snapToEdge(const PointXY& xy, idx_t t) const;
 
 private:
 
@@ -221,6 +233,12 @@ private:
 
   // Lower-left xy position on each tile.
   std::array<PointXY, 6> xy00_{};
+
+  // Min xy on each tile.
+  std::array<PointXY, 6> xyMin_{};
+
+  // Max xy on each tile.
+  std::array<PointXY, 6> xyMax_{};
 
   // Properties of four neighbours of a tile.
   struct Neighbours {

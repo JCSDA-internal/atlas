@@ -7,39 +7,39 @@
 
 #pragma once
 
+#include "atlas/grid/Tiles.h"
+#include "atlas/library/config.h"
+#include "atlas/projection/detail/ProjectionImpl.h"
 #include "eckit/config/Parametrisation.h"
 #include "eckit/utils/Hash.h"
 
-#include "atlas/projection/detail/ProjectionImpl.h"
-#include "atlas/library/config.h"
+namespace atlas {
+class CubedSphereTiles;
+}
 
 namespace atlas {
 namespace projection {
 namespace detail {
 
 class CubedSphereProjectionBase : public ProjectionImpl {
-  public:
+public:
     // constructor
     CubedSphereProjectionBase( const eckit::Parametrisation& );
 
     void hash( eckit::Hash& ) const;
 
-    idx_t tileFromXY(const double xy[]) const;
+    atlas::grid::CubedSphereTiles getCubedSphereTiles() const { return tiles_; };
 
-  protected:
-
-    void enforceXYdomain( double xy[] ) const;
-
+protected:
     // projection and inverse projection
-    void xy2lonlat_post( double xyz[], const idx_t& t, double crd[] ) const;
+    void xy2lonlat_post( double xyz[], const idx_t t, double crd[] ) const;
     void lonlat2xy_pre( double crd[], idx_t& t, double xyz[] ) const;
 
-    void xy2alphabetat(const double xy[], idx_t & t, double ab[]) const;
-    void alphabetat2xy(const idx_t & t, const double ab[],  double xy[]) const;
+    void xy2alphabetat( const double xy[], idx_t& t, double ab[] ) const;
+    void alphabetat2xy( const idx_t t, const double ab[], double xy[] ) const;
 
-    idx_t tileFromLonLat(const double crd[]) const;
-
-  private:
+private:
+    atlas::grid::CubedSphereTiles tiles_;
     // Shift entire grid
     double shiftLon_;
     // Schmidt transform
@@ -47,6 +47,9 @@ class CubedSphereProjectionBase : public ProjectionImpl {
     double stretchFac_;
     double targetLon_;
     double targetLat_;
+
+    std::array<std::array<double, 6>, 2> tiles_offsets_ab2xy_;
+    std::array<std::array<double, 6>, 2> tiles_offsets_xy2ab_;
 };
 
 }  // namespace detail

@@ -154,6 +154,8 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
   // Test node columns halo exchange.
   // ---------------------------------------------------------------------------
 
+  Log::info() << "Starting node columns test." << std::endl;
+
   // make a test field.
   auto testField1 = nodeColumns.createField<double>(util::Config("name", "test field (node columns)"));
 
@@ -185,7 +187,6 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
   double maxError = 0;
   for (idx_t i = 0; i < nodeColumns.size(); ++i) {
 
-    // Test field and test function should be the same.
     const double testVal = testFunction(lonLatView(i, LON), lonLatView(i, LAT));
     maxError = std::max(maxError, std::abs(testView1(i) - testVal));
 
@@ -195,9 +196,13 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
   Log::info() << "Test field max error (NodeColumns) : " << maxError << std::scientific << std::endl;
   EXPECT(maxError < 1e-12);
 
+  Log::info() << "Passed node columns test." << std::endl;
+
   // ---------------------------------------------------------------------------
   // Test cell columns halo exchange.
   // ---------------------------------------------------------------------------
+
+  Log::info() << "Starting cell columns test." << std::endl;
 
   // make a test field.
   auto testField2 = cellColumns.createField<double>(util::Config("name", "test field (cell columns)"));
@@ -240,6 +245,8 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
   Log::info() << "Test field max error (CellColumns) : " << maxError << std::scientific << std::endl;
   EXPECT(maxError < 1e-12);
 
+  Log::info() << "Passed cell columns test." << std::endl;
+
 
   if (output) {
 
@@ -257,7 +264,11 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
       nodeFields.add(testField1);
 
       auto cellFields = FieldSet{};
-        cellFields.add(mesh.cells().halo());
+      cellFields.add(mesh.cells().halo());
+      cellFields.add(mesh.cells().remote_index());
+      cellFields.add(mesh.cells().partition());
+      cellFields.add(mesh.cells().global_index());
+      cellFields.add(testField2);
 
       // Set gmsh config.
       const auto gmshConfigXy =
@@ -271,21 +282,30 @@ void testHaloExchange(const std::string& gridStr, const std::string& partitioner
       // Set gmsh objects.
       const auto fileStr =
        gridStr + "_" + partitionerStr + "_halo" + std::to_string(halo);
-      const auto gmshXy =
-       output::Gmsh(fileStr + "_xy.msh", gmshConfigXy);
-      const auto gmshXyz =
-       output::Gmsh(fileStr + "_xyz.msh", gmshConfigXyz);
 
-      // Write outputs.
+      // Node columns output.
+      auto gmshXy =
+       output::Gmsh(fileStr + "_NC_xy.msh", gmshConfigXy);
+      auto gmshXyz =
+       output::Gmsh(fileStr + "_NC_xyz.msh", gmshConfigXyz);
+
       gmshXy.write(mesh);
       gmshXy.write(nodeFields, nodeColumns);
-      gmshXy.write(cellFields, cellColumns);
 
       gmshXyz.write(mesh);
       gmshXyz.write(nodeFields, nodeColumns);
+
+      // Cell columns output.
+      gmshXy =
+       output::Gmsh(fileStr + "_CC_xy.msh", gmshConfigXy);
+      gmshXyz =
+       output::Gmsh(fileStr + "_CC_xyz.msh", gmshConfigXyz);
+
+      gmshXy.write(mesh);
+      gmshXy.write(cellFields, cellColumns);
+
+      gmshXyz.write(mesh);
       gmshXyz.write(cellFields, cellColumns);
-
-
 
   }
 
@@ -297,6 +317,7 @@ CASE("cubedsphere_mesh_test") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 0);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 0);
   }
+
   SECTION("N12, halo = 1") {
     testHaloExchange("CS-LFR-C-12", "equal_regions", 1);
     testHaloExchange("CS-LFR-C-12", "cubed_sphere", 1);

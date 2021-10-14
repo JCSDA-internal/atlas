@@ -16,6 +16,15 @@ ecbuild_add_executable(
 )
 
 ecbuild_add_executable(
+    TARGET  atlas-parallel-interp-redistr
+    SOURCES atlas-parallel-interp-redistr.cc
+            InterpRedistrWrapper.h
+            InterpRedistrWrapper.cc
+    LIBS    atlas
+    NOINSTALL
+)
+
+ecbuild_add_executable(
     TARGET  atlas-parallel-structured-interpolation
     SOURCES atlas-parallel-structured-interpolation.cc
     LIBS    atlas

@@ -45,12 +45,14 @@ public:
 
     virtual ~CellColumns() override;
 
-    virtual std::string type() const override { return "Cells"; }
+    static std::string static_type() { return "CellColumns"; }
+    virtual std::string type() const override { return static_type(); }
 
     virtual std::string distribution() const override;
 
     idx_t nb_cells() const;
     idx_t nb_cells_global() const;  // Only on MPI rank 0, will this be different from 0
+    idx_t levels() const;
     std::vector<idx_t> nb_cells_global_foreach_rank() const;
 
     const Mesh& mesh() const { return mesh_; }
@@ -86,6 +88,10 @@ public:
     virtual idx_t size() const override { return nb_cells_; }
 
     Field lonlat() const override;
+
+    Field remote_index() const override;
+
+    Field global_index() const override;
 
 private:  // methods
     idx_t config_size( const eckit::Configuration& config ) const;
@@ -151,16 +157,22 @@ const parallel::Checksum* atlas__fs__CellColumns__get_checksum( const CellColumn
 
 class CellColumns : public FunctionSpace {
 public:
+    using Implementation = detail::CellColumns;
+
+public:
     CellColumns();
     CellColumns( const FunctionSpace& );
     CellColumns( const Mesh&, const eckit::Configuration& );
     CellColumns( const Mesh& mesh );
+
+    static std::string type() { return detail::CellColumns::static_type(); }
 
     operator bool() const { return valid(); }
     bool valid() const { return functionspace_; }
 
     idx_t nb_cells() const;
     idx_t nb_cells_global() const;  // Only on MPI rank 0, will this be different from 0
+    idx_t levels() const;
 
     const Mesh& mesh() const;
 

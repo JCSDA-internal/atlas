@@ -105,6 +105,7 @@ CubedSphere::CubedSphere( const std::string& name, int N, Projection projection,
     }
 
     // default assumes jmax_ value of N - 1 on all tiles
+    jmin_ = std::array<idx_t, 6>{0, 0, 0, 0, 0, 0};
     jmax_ = std::array<idx_t, 6>{N - 1, N - 1, N - 1, N - 1, N - 1, N - 1};
 
     if ( tiles_.type() == "cubedsphere_fv3" ) {
@@ -575,15 +576,17 @@ Grid::Config CubedSphere::meshgenerator() const {
 }
 
 Grid::Config CubedSphere::partitioner() const {
+    Grid::Config config;
     if ( stagger_ == "L" ) {
         // TODO: implement better one specific for cubed sphere that
         //       works for nodal grid
-        Grid::Config config;
         config.set( "type", "equal_regions" );
         config.set( "coordinates", "lonlat" );  // do not use the grid.xy() coordinates for partitioning
         return config;
     }
-    return Config( "type", "cubedsphere" );
+    config.set( "coordinates", "lonlat" );
+    config.set( "type", "cubedsphere" );
+    return config;
 }
 
 // -------------------------------------------------------------------------------------------------

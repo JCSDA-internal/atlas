@@ -20,7 +20,7 @@
 
 #include "atlas/grid/Partitioner.h"
 #include "atlas/grid/detail/partitioner/TransPartitioner.h"
-#include "atlas/grid/detail/partitioner/ZonalBoardPartitioner.h"
+
 
 #include "atlas/redistribution/Redistribution.h"
 #include "atlas/field/Field.h"
@@ -28,15 +28,10 @@
 
 #include "atlas/interpolation.h"
 
-#include "oops/util/Logger.h"
-#include "oops/base/Variables.h"
-
-#include "um-jedi/Geometry/Geometry.h"
-#include "um-jedi/Geometry/GeometryDetail.h"
-#include "um-jedi/Utilities/AtlasInterpWrapper.h"
+#include "InterpRedistrWrapper.h"
 
 using atlas::grid::detail::partitioner::TransPartitioner;
-using atlas::grid::detail::partitioner::ZonalBoardPartitioner;
+
 
 namespace {
 
@@ -123,7 +118,8 @@ manageGridSubset(const std::vector<std::pair<std::string, std::size_t>> & output
             grid = atlas::StructuredGrid(atlas::functionspace::StructuredColumns(f.functionspace()).grid());
 
             keysGrids[outputFSkeys[i]] =
-                    std::make_unique<const atlas::StructuredGrid>(grid);
+                 std::unique_ptr<const atlas::StructuredGrid>( new const atlas::StructuredGrid(
+                    grid) );
 
         }
         ++i;
@@ -154,7 +150,9 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
 
     for (auto l : uniqueLevels) {
        std::pair<std::string, std::size_t> key = std::make_pair(gaussGrid.name(), l);
-       keyInputGrids[key] = std::make_unique<atlas::StructuredGrid>(gaussGrid);
+
+       keyInputGrids[key] =
+           std::unique_ptr<atlas::StructuredGrid>(new atlas::StructuredGrid(gaussGrid) );
     }
 
 
@@ -169,8 +167,9 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
                     atlas::grid::Partitioner(new TransPartitioner() ),
                     atlas::option::levels(key.second) | atlas::option::halo(1) );
 
-        functionSpaces[key] = std::make_unique<const atlas::functionspace::StructuredColumns>(inputFS);
-
+        functionSpaces[key] =
+             std::unique_ptr<const atlas::functionspace::StructuredColumns>(
+                    new const atlas::functionspace::StructuredColumns(inputFS));
     }
 
     return functionSpaces;
@@ -199,7 +198,8 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
             fs = atlas::functionspace::StructuredColumns(f.functionspace());
 
             functionSpaces[outputFSkeys[i]] =
-               std::make_unique<const atlas::functionspace::StructuredColumns>(fs);
+               std::unique_ptr<const atlas::functionspace::StructuredColumns>( new
+                  const atlas::functionspace::StructuredColumns(fs) );
         }
         ++i;
     }
@@ -246,7 +246,9 @@ createMatchingMeshFunctionSpaces(
                           atlas::grid::MatchingPartitioner( *(inputFS.at(inputKey)) ),
                           atlas::option::levels(key.second) | atlas::option::halo(1) );
 
-        functionSpaces[key] = std::make_unique<const atlas::functionspace::StructuredColumns>(outputFS);
+        functionSpaces[key] =
+            std::unique_ptr<const atlas::functionspace::StructuredColumns>(
+                new const atlas::functionspace::StructuredColumns(outputFS) );
 
     }
 
@@ -286,10 +288,13 @@ createAtlasInterpolations(const std::map< std::pair<std::string, std::size_t>,
         //here inputKey.second refers to the model levels
         inputKey.second = key.second;
 
-        interps[key] = std::make_unique<const atlas::Interpolation>(
+       // std::unique_ptr<MyClass> test(new MyClass(data));
+
+        interps[key] =
+          std::unique_ptr<const atlas::Interpolation>( new const atlas::Interpolation(
                     interp |
                     atlas::util::Config( "adjoint", true ),
-                    *(inputFS.at(inputKey)), *(matchingFS.at(key)));
+                    *(inputFS.at(inputKey)), *(matchingFS.at(key))));
     }
     return interps;
 };
@@ -309,14 +314,15 @@ createAtlasRedistributions(const std::map< std::pair<std::string, std::size_t>,
         std::pair<std::string, std::size_t> key = f.first;
 
         redistributions[key] =
-            std::make_unique<const atlas::Redistribution>( *(f.second),
-                                                           *(outputFS.at(key)) );
+
+            std::unique_ptr<const atlas::Redistribution>( new const atlas::Redistribution(
+                *(f.second), *(outputFS.at(key)) ) );
 
         std::pair<std::string, std::size_t> key2 = make_pair(key.first + "_inverse", key.second);
 
         redistributions[key2] =
-            std::make_unique<const atlas::Redistribution>( *(outputFS.at(key)),
-                                                           *(f.second) );
+            std::unique_ptr<const atlas::Redistribution>( new const atlas::Redistribution(
+                *(outputFS.at(key)), *(f.second) ) );
     }
 
     return redistributions;
@@ -325,12 +331,11 @@ createAtlasRedistributions(const std::map< std::pair<std::string, std::size_t>,
 
 } // anonymous namespace
 // ------------------------------------------------------------------------------------------------
-namespace unifiedmodel {
 // ------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 // ATLAS INTERPOLATION WRAPPER
 //-------------------------------------------------------------------------------------------------
-AtlasInterpWrapper::AtlasInterpWrapper( const eckit::Configuration & conf,
+InterpRedistr::InterpRedistr( const eckit::Configuration & conf,
                                         std::shared_ptr<const atlas::FieldSet> & fieldset) :
      fieldsetNames_((*fieldset).field_names()),
      outputFSKeys_(createOutputFunctionSpaceKeys(*fieldset)),
@@ -347,7 +352,7 @@ AtlasInterpWrapper::AtlasInterpWrapper( const eckit::Configuration & conf,
 };
 
 //-------------------------------------------------------------------------------------------------
-void AtlasInterpWrapper::execute( const atlas::Field & srcField,
+void InterpRedistr::execute( const atlas::Field & srcField,
                                   atlas::Field & targetField ) const {
 
     // create a field of matchingmesh functionspace
@@ -383,7 +388,7 @@ void AtlasInterpWrapper::execute( const atlas::Field & srcField,
 
 }
 
-void AtlasInterpWrapper::executeAdjoint( atlas::Field & srcField,
+void InterpRedistr::executeAdjoint( atlas::Field & srcField,
                                          const atlas::Field & tgtField ) const {
 
     // create a field that is a copy of target
@@ -416,7 +421,7 @@ void AtlasInterpWrapper::executeAdjoint( atlas::Field & srcField,
 
 }
 
-void AtlasInterpWrapper::execute( const atlas::FieldSet & srcFieldSet,
+void InterpRedistr::execute( const atlas::FieldSet & srcFieldSet,
                                   atlas::FieldSet & targetFieldSet ) const {
 
     for (auto srcField : srcFieldSet) {
@@ -426,7 +431,7 @@ void AtlasInterpWrapper::execute( const atlas::FieldSet & srcFieldSet,
 
 }
 
-void AtlasInterpWrapper::executeAdjoint( atlas::FieldSet & srcFieldSet,
+void InterpRedistr::executeAdjoint( atlas::FieldSet & srcFieldSet,
                                          const atlas::FieldSet & targetFieldSet ) const {
 
     for (auto srcField : srcFieldSet) {
@@ -436,7 +441,5 @@ void AtlasInterpWrapper::executeAdjoint( atlas::FieldSet & srcFieldSet,
 
 }
 
-
-} //namespace unifiedmodel
 // ------------------------------------------------------------------------------------------------
 

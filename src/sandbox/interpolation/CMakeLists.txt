@@ -16,8 +16,8 @@ ecbuild_add_executable(
 )
 
 ecbuild_add_executable(
-    TARGET  atlas-parallel-interp-redistr
-    SOURCES atlas-parallel-interp-redistr.cc
+    TARGET  atlas-parallel-interpolation-fieldset
+    SOURCES atlas-parallel-interpolation-fieldsets.cc
             InterpRedistrWrapper.h
             InterpRedistrWrapper.cc
     LIBS    atlas

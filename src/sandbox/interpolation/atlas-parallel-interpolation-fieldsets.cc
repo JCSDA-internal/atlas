@@ -1,5 +1,5 @@
 /*
- * (C) Copyright 2013 ECMWF.
+ * (C) Crown Copyright 2021 Met Office.
  *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -10,11 +10,15 @@
 
 #include <cmath>
 #include <string>
+
+#include "eckit/filesystem/LocalPathName.h"
+
 #include "atlas/field.h"
 #include "atlas/functionspace.h"
 #include "atlas/interpolation.h"
 #include "atlas/runtime/AtlasTool.h"
 #include "atlas/runtime/Log.h"
+#include "eckit/config/Resource.h"
 #include "eckit/config/Configuration.h"
 
 using namespace atlas;
@@ -41,12 +45,6 @@ auto vortex_rollup = []( double lon, double lat, double t ) {
     return q;
 };
 
-// Design structure
-
-// read yaml
-
-// fieldset:
-//    -
 
 class FieldConfiguration  {
 public:
@@ -95,42 +93,55 @@ private:
 
 FieldSetConfiguration::FieldSetConfiguration(eckit::Configuration & conf) :
     include_adjoint_(conf.getBool("include adjoint")),
-    include_redistribution_(conf.getBool("include adjoint")),
+    include_redistribution_(conf.getBool("include redistribution")),
     interpolation_method_(conf.getString("interpolation method")),
-    field_configurations_(conf.getSubConfigurations("field configurations")) {
-}
+    field_configurations_(conf.getSubConfigurations("field configurations")) {};
 
 class AtlasParallelInterpolationFieldSet : public AtlasTool {
-public:
+    int execute( const AtlasTool::Args& args ) override;
 
+  //  int numberOfPositionalArguments() override { return -1; }
+  //  int minimumPositionalArguments() override { return 0; }
+public:
     AtlasParallelInterpolationFieldSet( int argc, char* argv[] ) : AtlasTool( argc, argv ) {
         add_option( new SimpleOption<std::string>( "yaml filename", "file name of yaml" ) );
     }
-
-
-
-private:
-
-    int execute( const AtlasTool::Args& args ) override;
-
 };
 
+int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
+    ATLAS_TRACE( "AtlasParallelInterpolationFieldSet::execute" );
+    eckit::LocalPathName path(args.getString("yaml filename", "interp.yaml" ));
+    atlas::util::Config config(path);
+
+    FieldSetConfiguration fs(config);
+
+    std::cout << "Config setting" << fs.getIncludeAdjoint() << " "
+              << fs.getIncludeRedistribution() << " "
+              << fs.getInterpolationMethod() << std::endl;
+
+    for (std::size_t i = 0; i < fs.getNoFields(); ++i ) {
+        auto f = FieldConfiguration(fs.getFieldConfiguration(i));
+        std::cout << i << " " << f.getSourceGridName() << " " << f.getTargetGridName() << " "
+                  << f.getSourceParitionerName() << " " << f.getTargetPartitionerName() << " "
+                  << f.getSourceLevels() << std::endl;
+     }
+
+    // get main program to read the configuration and print the values
+
+    // get main program to allocate input and output FieldSets.
+
+    // populate the input FieldSet with variants of the vortex roll up.
+
+    // get main progran to interface to wrapper.
+
+    // gmsh output from interpolation.
 
 
-// get main program to read the configuration and print the values
+    // apply adjoint interpolation
 
-// get main program to allocate input and output FieldSets.
-
-// populate the input FieldSet with variants of the vortex roll up.
-
-// get main progran to interface to wrapper.
-
-// gmsh output from interpolation.
-
-
-// apply adjoint interpolation
-
-// test?
+    // test?
+    return 1;
+}
 
 int main( int argc, char* argv[] ) {
     AtlasParallelInterpolationFieldSet tool( argc, argv );

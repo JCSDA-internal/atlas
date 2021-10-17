@@ -1,0 +1,15 @@
+include adjoint: true
+include redistribution: true
+interpolation method: "linear"
+field configurations:
+  - source grid name: "G6"
+    source partitioner name: "EqualRegions"
+    target grid name: "L6"
+    target partitioner name: "CheckerBoard"
+    source levels: 2
+  - source grid name: "G6"
+    source partitioner name: "EqualRegions"
+    target grid name: "S6"
+    target partitioner name: "CheckerBoard"
+    source levels: 2
+

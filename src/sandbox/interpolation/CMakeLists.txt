@@ -6,21 +6,29 @@
 # granted to it by virtue of its status as an intergovernmental organisation nor
 # does it submit to any jurisdiction.
 
-ecbuild_add_executable(
-    TARGET  atlas-parallel-interpolation
-    SOURCES atlas-parallel-interpolation.cc
-            PartitionedMesh.h
-            PartitionedMesh.cc
-    LIBS    atlas
-    NOINSTALL
+list (APPEND Data_yaml
+  interp.yaml
 )
+foreach(FILENAME ${Data_yaml})
+    execute_process( COMMAND ${CMAKE_COMMAND} -E create_symlink
+           ${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}
+           ${CMAKE_CURRENT_BINARY_DIR}/${FILENAME} )
+endforeach(FILENAME)
 
 ecbuild_add_executable(
     TARGET  atlas-parallel-interpolation-fieldset
     SOURCES atlas-parallel-interpolation-fieldsets.cc
             InterpRedistrWrapper.h
             InterpRedistrWrapper.cc
-            interp.yaml
+    LIBS    atlas
+    NOINSTALL
+)
+
+ecbuild_add_executable(
+    TARGET  atlas-parallel-interpolation
+    SOURCES atlas-parallel-interpolation.cc
+            PartitionedMesh.h
+            PartitionedMesh.cc
     LIBS    atlas
     NOINSTALL
 )

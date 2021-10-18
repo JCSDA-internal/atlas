@@ -15,35 +15,31 @@
 
 #include "atlas/field.h"
 #include "atlas/functionspace.h"
+#include "atlas/functionspace/CubedSphereColumns.h"
+#include "atlas/functionspace/NodeColumns.h"
+#include "atlas/functionspace/StructuredColumns.h"
+
+#include "atlas/grid/Partitioner.h"
+
+#include "atlas/grid.h"
+
+#include "atlas/meshgenerator.h"
+#include "atlas/meshgenerator/detail/cubedsphere/CubedSphereUtility.h"
+
 #include "atlas/interpolation.h"
 #include "atlas/runtime/AtlasTool.h"
 #include "atlas/runtime/Log.h"
 #include "eckit/config/Resource.h"
 #include "eckit/config/Configuration.h"
 
+#include "InterpRedistrWrapper.h"
+
 using namespace atlas;
 
-auto vortex_rollup = []( double lon, double lat, double t ) {
-    // lon and lat in radians!
 
-    // Formula found in "A Lagrangian Particle Method with Remeshing for Tracer Transport on the Sphere"
-    // by Peter Bosler, James Kent, Robert Krasny, CHristiane Jablonowski, JCP 2015
-
-    auto sqr           = []( const double x ) { return x * x; };
-    auto sech          = []( const double x ) { return 1. / std::cosh( x ); };
-    const double T     = 1.;
-    const double Omega = 2. * M_PI / T;
-    t *= T;
-    const double lambda_prime = std::atan2( -std::cos( lon - Omega * t ), std::tan( lat ) );
-    const double rho          = 3. * std::sqrt( 1. - sqr( std::cos( lat ) ) * sqr( std::sin( lon - Omega * t ) ) );
-    double omega              = 0.;
-    double a                  = util::Earth::radius();
-    if ( rho != 0. ) {
-        omega = 0.5 * 3 * std::sqrt( 3 ) * a * Omega * sqr( sech( rho ) ) * std::tanh( rho ) / rho;
-    }
-    double q = 1. - std::tanh( 0.2 * rho * std::sin( lambda_prime - omega / a * t ) );
-    return q;
-};
+double testFunction( double lon, double lat ) {
+    return std::sin( 3 * lon * M_PI / 180 ) * std::sin( 2 * lat * M_PI / 180 );
+}
 
 
 class FieldConfiguration  {
@@ -52,7 +48,7 @@ public:
     FieldConfiguration(eckit::Configuration & conf) ;
 
     const std::string & getSourceGridName(){ return source_grid_name_;};
-    const std::string & getSourceParitionerName(){ return source_partitioner_name_;};
+    const std::string & getSourcePartitionerName(){ return source_partitioner_name_;};
     const std::size_t & getSourceLevels(){ return source_levels_;};
     const std::string & getTargetGridName(){ return target_grid_name_;};
     const std::string & getTargetPartitionerName(){ return target_partitioner_name_;};
@@ -110,6 +106,8 @@ public:
 
 int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
     ATLAS_TRACE( "AtlasParallelInterpolationFieldSet::execute" );
+
+    // get main program to read the configuration and print the values
     eckit::LocalPathName path(args.getString("yaml filename", "interp.yaml" ));
     atlas::util::Config config(path);
 
@@ -122,28 +120,144 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
     for (std::size_t i = 0; i < fs.getNoFields(); ++i ) {
         auto f = FieldConfiguration(fs.getFieldConfiguration(i));
         std::cout << i << " " << f.getSourceGridName() << " " << f.getTargetGridName() << " "
-                  << f.getSourceParitionerName() << " " << f.getTargetPartitionerName() << " "
+                  << f.getSourcePartitionerName() << " " << f.getTargetPartitionerName() << " "
                   << f.getSourceLevels() << std::endl;
      }
 
-    // get main program to read the configuration and print the values
-
     // get main program to allocate input and output FieldSets.
+    atlas::FieldSet srcFieldSet;
+    atlas::FieldSet tarFieldSet;
 
-    // populate the input FieldSet with variants of the vortex roll up.
+    for (int i = 0; i < fs.getNoFields(); ++i) {
+        auto f = FieldConfiguration(fs.getFieldConfiguration(i));
 
-    // get main progran to interface to wrapper.
+        // create grid
+        atlas::Grid srcG(f.getSourceGridName());
+        atlas::Grid tarG(f.getSourceGridName());
 
-    // gmsh output from interpolation.
+        // create partitioner
+        atlas::grid::Partitioner srcP(f.getSourcePartitionerName());
+        atlas::grid::Partitioner tarP(f.getTargetPartitionerName());
+
+        // extract SLat S L Slon G F O
+        if ( (f.getSourceGridName().compare(0, 1, "S") == 0)|| (f.getSourceGridName().compare(0, 1, "L") == 0) ||
+             (f.getSourceGridName().compare(0, 1, "G") == 0) || (f.getSourceGridName().compare(0, 1, "F") == 0)  ||
+             (f.getSourceGridName().compare(0, 1, "O") == 0) ) {
+
+           const auto funConfig =  util::Config( "halo", 1 ) |
+                                   util::Config( "levels", f.getSourceLevels());
 
 
-    // apply adjoint interpolation
+           srcFieldSet.add( atlas::functionspace::StructuredColumns(srcG, srcP, funConfig).createField<double>(
+                 util::Config( "name",  "field " + std::to_string(i) + " with levels " + std::to_string(f.getSourceLevels()) ) ) );
 
-    // test?
-    return 1;
+        }
+
+        std::cout << "help"  << std::endl;
+
+        if ( (f.getTargetGridName().compare(0, 1, "S") == 0) || (f.getTargetGridName().compare(0, 1, "L") == 0) ||
+             (f.getTargetGridName().compare(0, 1, "G") == 0) || (f.getTargetGridName().compare(0, 1, "F") == 0) ||
+             (f.getTargetGridName().compare(0, 1, "O") == 0) ) {
+
+            const auto funConfig =  util::Config( "halo", 1 ) |
+                                    util::Config( "levels", f.getSourceLevels());
+
+            tarFieldSet.add( atlas::functionspace::StructuredColumns(tarG, tarP, funConfig).createField<double>(
+                  util::Config( "name",  "field " + std::to_string(i) + " with levels " + std::to_string(f.getSourceLevels()) ) ) );
+        }
+
+        if ( (f.getSourceGridName().compare(0, 2, "CS") == 0) ||  (f.getTargetGridName().compare(0, 2, "CS") == 0) ){
+            // create CubedSphere mesh
+
+            // Set mesh config.
+            const auto meshConfig = util::Config( "partitioner", f.getSourcePartitionerName() ) |
+                                    util::Config( "halo", 1 ) |
+                                    util::Config( "levels", f.getSourceLevels());
+
+            // Set mesh generator.
+            const auto meshGen = MeshGenerator( "cubedsphere", meshConfig );
+
+            if ( f.getSourceGridName().compare(0, 2, "CS") ) {
+
+                const auto mesh = meshGen.generate( srcG );
+
+                srcFieldSet.add( atlas::functionspace::CubedSphereCellColumns(mesh).createField<double>(
+                  util::Config( "name", "field " + std::to_string(i) + " with levels " + std::to_string(f.getSourceLevels()) ) ) );
+            }
+
+            if ( f.getTargetGridName().compare(0, 2, "CS") ) {
+
+                const auto mesh = meshGen.generate( tarG );
+
+                srcFieldSet.add( atlas::functionspace::CubedSphereCellColumns(mesh).createField<double>(
+                  util::Config( "name", "field " + std::to_string(i) + " with levels " + std::to_string(f.getSourceLevels()) ) ) );
+            }
+        }
+    }
+
+    // populate the source fields and take halo exchange;
+    idx_t i(0);
+    for (auto & Field : srcFieldSet) {
+
+        auto f = FieldConfiguration(fs.getFieldConfiguration(i));
+
+        auto testView1 = array::make_view<double, 2>( Field );
+
+        // Willem it would be nice to be able to collapse this.
+        // Ideally some like
+        //  auto funcS = ( f.getSourceGridName().compare(0, 2, "CS") ?
+        //           functionspace::CubedSphereCellColumns(Field.functionspace()) :
+        //           functionspace::StructuredColumns(Field.functionspace()) )
+        //
+        //
+        // Maybe a template solution?
+
+        if ( (f.getSourceGridName().compare(0, 2, "CS") == 0)) {
+
+           auto funcS = functionspace::CubedSphereCellColumns(Field.functionspace());
+
+           auto lonLatView = array::make_view<double, 2>(funcS.lonlat() );
+
+           funcS.parallel_for([&]( idx_t index, idx_t k )
+             { testView1( index, k ) =  testFunction(lonLatView(index, LON),
+                                                     lonLatView(index, LAT)); } );
+
+           funcS.haloExchange( Field );
+
+
+        } else {
+
+            auto funcS = functionspace::StructuredColumns(Field.functionspace());
+
+            auto lonLatView = array::make_view<double, 2>(funcS.lonlat() );
+
+            funcS.parallel_for([&]( idx_t index, idx_t k )
+              { testView1( index, k ) =  testFunction(lonLatView(index, LON),
+                                                      lonLatView(index, LAT)); } );
+
+            funcS.haloExchange( Field );
+
+        }
+
+        ++i;
+   }
+
+   // get main program to interface to wrapper.
+   // note that (unlike here) the instantiation of the wrapper object may use
+   // FieldSets that are out of scope by the time they are used to do interpolation
+
+   eckit::LocalConfiguration conf;
+   conf.set("interpolation method", "linear");
+
+   InterpRedistr interp(conf, srcFieldSet, tarFieldSet);
+
+   interp.execute(srcFieldSet, tarFieldSet);
+
+   // dump out gmsh
+   return 1;
 }
 
 int main( int argc, char* argv[] ) {
-    AtlasParallelInterpolationFieldSet tool( argc, argv );
-    return tool.start();
+   AtlasParallelInterpolationFieldSet tool( argc, argv );
+   return tool.start();
 }

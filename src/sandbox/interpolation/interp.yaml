@@ -2,14 +2,14 @@ include adjoint: true
 include redistribution: true
 interpolation method: "linear"
 field configurations:
-  - source grid name: "G6"
-    source partitioner name: "EqualRegions"
+  - source grid name: "F6"
+    source partitioner name: "equal_regions"
     target grid name: "L6"
-    target partitioner name: "CheckerBoard"
+    target partitioner name: "checkerboard"
     source levels: 2
-  - source grid name: "G6"
-    source partitioner name: "EqualRegions"
+  - source grid name: "F6"
+    source partitioner name: "equal_regions"
     target grid name: "S6"
-    target partitioner name: "CheckerBoard"
+    target partitioner name: "checkerboard"
     source levels: 2
 

@@ -19,6 +19,7 @@
 #include "atlas/grid/StructuredGrid.h"
 
 #include "atlas/grid/Partitioner.h"
+#include "atlas/grid/detail/partitioner/MatchingMeshPartitioner.h"
 #include "atlas/grid/detail/partitioner/TransPartitioner.h"
 
 
@@ -31,13 +32,12 @@
 #include "InterpRedistrWrapper.h"
 
 using atlas::grid::detail::partitioner::TransPartitioner;
-
+using atlas::grid::detail::partitioner::MatchingMeshPartitioner;
 
 namespace {
 
-
 // -----------------------------------------------------------------------------
-atlas::StructuredGrid createGaussGrid(std::shared_ptr<const atlas::FieldSet> & fieldset) {
+atlas::StructuredGrid createGaussGrid(const atlas::FieldSet & fieldset) {
     // Atlas uses "F" (followed by a number # denoting wavenumber) to denote a classic Gaussian grid
     // with # wavenumbers.
     // The maximum wavenumber is defined as the number of points around a latitude circle
@@ -100,12 +100,12 @@ createDifferingOutputFunctionSpaceKeys(const std::vector<std::pair<std::string, 
 }
 
 // -----------------------------------------------------------------------------
-std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::StructuredGrid>>
+std::map<std::pair<std::string, std::size_t>, atlas::StructuredGrid>
 manageGridSubset(const std::vector<std::pair<std::string, std::size_t>> & outputFSkeys,
                  const std::set<std::pair<std::string, std::size_t>> & differingOutputFSkeys,
                  const atlas::FieldSet & fieldset) {
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::StructuredGrid>> keysGrids;
+    std::map<std::pair<std::string, std::size_t>, atlas::StructuredGrid> keysGrids;
 
     std::set<std::pair<std::string, std::size_t>> tmpKeys(differingOutputFSkeys);
 
@@ -114,13 +114,8 @@ manageGridSubset(const std::vector<std::pair<std::string, std::size_t>> & output
     atlas::StructuredGrid grid;
     for (auto f : fieldset) {
         if (tmpKeys.erase(outputFSkeys[i])) {
-
-            grid = atlas::StructuredGrid(atlas::functionspace::StructuredColumns(f.functionspace()).grid());
-
             keysGrids[outputFSkeys[i]] =
-                 std::unique_ptr<const atlas::StructuredGrid>( new const atlas::StructuredGrid(
-                    grid) );
-
+                atlas::StructuredGrid(atlas::functionspace::StructuredColumns(f.functionspace()).grid());
         }
         ++i;
     }
@@ -130,13 +125,12 @@ manageGridSubset(const std::vector<std::pair<std::string, std::size_t>> & output
 
 
 // -----------------------------------------------------------------------------
-std::map<std::pair<std::string, std::size_t>,
-std::unique_ptr<const atlas::functionspace::StructuredColumns>>
+std::map<std::pair<std::string, std::size_t>, atlas::functionspace::StructuredColumns>
     createInputFS( const atlas::StructuredGrid & gaussGrid,
     const std::set<std::pair<std::string, std::size_t>> & differingOutputFSKeys) {
 
     std::map<std::pair<std::string, std::size_t>,
-            std::unique_ptr<const atlas::functionspace::StructuredColumns> >
+         atlas::functionspace::StructuredColumns >
         functionSpaces;
 
     // extract a set of levels from the output keys
@@ -146,13 +140,12 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
     }
 
     std::map< std::pair<std::string, std::size_t>,
-        std::unique_ptr<const atlas::StructuredGrid> > keyInputGrids;
+        atlas::StructuredGrid> keyInputGrids;
 
     for (auto l : uniqueLevels) {
        std::pair<std::string, std::size_t> key = std::make_pair(gaussGrid.name(), l);
 
-       keyInputGrids[key] =
-           std::unique_ptr<atlas::StructuredGrid>(new atlas::StructuredGrid(gaussGrid) );
+       keyInputGrids[key] = atlas::StructuredGrid(gaussGrid) ;
     }
 
 
@@ -163,13 +156,11 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
         auto key = s.first;
 
         atlas::functionspace::StructuredColumns inputFS(
-                    *(s.second),
+                    s.second,
                     atlas::grid::Partitioner(new TransPartitioner() ),
                     atlas::option::levels(key.second) | atlas::option::halo(1) );
 
-        functionSpaces[key] =
-             std::unique_ptr<const atlas::functionspace::StructuredColumns>(
-                    new const atlas::functionspace::StructuredColumns(inputFS));
+        functionSpaces[key] = inputFS;
     }
 
     return functionSpaces;
@@ -178,12 +169,12 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
 
 // -----------------------------------------------------------------------------
 std::map<std::pair<std::string, std::size_t>,
-std::unique_ptr<const atlas::functionspace::StructuredColumns>>
+atlas::functionspace::StructuredColumns>
     createOutputFS(const std::vector<std::pair<std::string, std::size_t>> & outputFSkeys,
                    const std::set<std::pair<std::string, std::size_t>> & differingOutputFSkeys,
                    const atlas::FieldSet & fieldset) {
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::functionspace::StructuredColumns>>
+    std::map<std::pair<std::string, std::size_t>, atlas::functionspace::StructuredColumns>
         functionSpaces;
 
     std::set<std::pair<std::string, std::size_t>> tmpKeys(differingOutputFSkeys);
@@ -197,9 +188,7 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
 
             fs = atlas::functionspace::StructuredColumns(f.functionspace());
 
-            functionSpaces[outputFSkeys[i]] =
-               std::unique_ptr<const atlas::functionspace::StructuredColumns>( new
-                  const atlas::functionspace::StructuredColumns(fs) );
+            functionSpaces[outputFSkeys[i]] = fs;
         }
         ++i;
     }
@@ -210,14 +199,14 @@ std::unique_ptr<const atlas::functionspace::StructuredColumns>>
 
 // -----------------------------------------------------------------------------------
 //matching mesh functionspaces
-std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::functionspace::StructuredColumns>>
+std::map<std::pair<std::string, std::size_t>, atlas::functionspace::StructuredColumns>
 createMatchingMeshFunctionSpaces(
         const std::map<std::pair<std::string, std::size_t>,
-        std::unique_ptr<const atlas::functionspace::StructuredColumns>> & inputFS,
+        atlas::functionspace::StructuredColumns> & inputFS,
         const std::map<std::pair<std::string, std::size_t>,
-        std::unique_ptr<const atlas::StructuredGrid>> & keyOutputGrids) {
+        atlas::StructuredGrid> & keyOutputGrids) {
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::functionspace::StructuredColumns>>
+    std::map<std::pair<std::string, std::size_t>, atlas::functionspace::StructuredColumns>
         functionSpaces;
 
     // assuming that inputFS has the same grid throughout.
@@ -242,13 +231,11 @@ createMatchingMeshFunctionSpaces(
         inputKey.second = key.second;
 
         atlas::functionspace::StructuredColumns
-                outputFS( *(s.second),
-                          atlas::grid::MatchingPartitioner( *(inputFS.at(inputKey)) ),
+                outputFS( s.second,
+                          atlas::grid::MatchingPartitioner( inputFS.at(inputKey)),
                           atlas::option::levels(key.second) | atlas::option::halo(1) );
 
-        functionSpaces[key] =
-            std::unique_ptr<const atlas::functionspace::StructuredColumns>(
-                new const atlas::functionspace::StructuredColumns(outputFS) );
+        functionSpaces[key] = outputFS ;
 
     }
 
@@ -258,13 +245,13 @@ createMatchingMeshFunctionSpaces(
 
 // -----------------------------------------------------------------------------
 //atlas createAtlasInterpolations
-std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Interpolation>>
+std::map<std::pair<std::string, std::size_t>, atlas::Interpolation>
 createAtlasInterpolations(const std::map< std::pair<std::string, std::size_t>,
-                          std::unique_ptr<const atlas::functionspace::StructuredColumns>> & inputFS,
+                          atlas::functionspace::StructuredColumns> & inputFS,
                           const std::map< std::pair<std::string, std::size_t>,
-                          std::unique_ptr<const atlas::functionspace::StructuredColumns>> & matchingFS,
+                          atlas::functionspace::StructuredColumns> & matchingFS,
                           const std::map< std::pair<std::string, std::size_t>,
-                          std::unique_ptr<const atlas::StructuredGrid>> & keysGrids) {
+                          atlas::StructuredGrid> & keysGrids) {
 
     std::cout << " atlas wrapper construct" << std::endl;
 
@@ -272,7 +259,7 @@ createAtlasInterpolations(const std::map< std::pair<std::string, std::size_t>,
     atlas::util::Config interp;
     interp.set( "type", "structured-linear2D" );
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Interpolation>> interps;
+    std::map<std::pair<std::string, std::size_t>, atlas::Interpolation> interps;
 
     auto inputKeyFirst = (*inputFS.begin()).first;
 
@@ -291,38 +278,33 @@ createAtlasInterpolations(const std::map< std::pair<std::string, std::size_t>,
        // std::unique_ptr<MyClass> test(new MyClass(data));
 
         interps[key] =
-          std::unique_ptr<const atlas::Interpolation>( new const atlas::Interpolation(
+          atlas::Interpolation(
                     interp |
                     atlas::util::Config( "adjoint", true ),
-                    *(inputFS.at(inputKey)), *(matchingFS.at(key))));
+                    inputFS.at(inputKey), matchingFS.at(key));
     }
     return interps;
 };
 
 //-----------------------------------------------------------------------------
 //atlas createAtlasRedistributions
-std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Redistribution>>
+std::map<std::pair<std::string, std::size_t>, atlas::Redistribution>
 createAtlasRedistributions(const std::map< std::pair<std::string, std::size_t>,
-                           std::unique_ptr<const atlas::functionspace::StructuredColumns>> & matchingFS,
+                           atlas::functionspace::StructuredColumns> & matchingFS,
                            const std::map< std::pair<std::string, std::size_t>,
-                           std::unique_ptr<const atlas::functionspace::StructuredColumns>> & outputFS) {
+                           atlas::functionspace::StructuredColumns> & outputFS) {
 
-    std::map< std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Redistribution>>
+    std::map< std::pair<std::string, std::size_t>, atlas::Redistribution>
             redistributions;
 
     for (auto & f : matchingFS) {
         std::pair<std::string, std::size_t> key = f.first;
 
-        redistributions[key] =
-
-            std::unique_ptr<const atlas::Redistribution>( new const atlas::Redistribution(
-                *(f.second), *(outputFS.at(key)) ) );
+        redistributions[key] = atlas::Redistribution( f.second, outputFS.at(key) );
 
         std::pair<std::string, std::size_t> key2 = make_pair(key.first + "_inverse", key.second);
 
-        redistributions[key2] =
-            std::unique_ptr<const atlas::Redistribution>( new const atlas::Redistribution(
-                *(outputFS.at(key)), *(f.second) ) );
+        redistributions[key2] = atlas::Redistribution( outputFS.at(key), f.second);
     }
 
     return redistributions;
@@ -336,15 +318,16 @@ createAtlasRedistributions(const std::map< std::pair<std::string, std::size_t>,
 // ATLAS INTERPOLATION WRAPPER
 //-------------------------------------------------------------------------------------------------
 InterpRedistr::InterpRedistr( const eckit::Configuration & conf,
-                                        std::shared_ptr<const atlas::FieldSet> & fieldset) :
-     fieldsetNames_((*fieldset).field_names()),
-     outputFSKeys_(createOutputFunctionSpaceKeys(*fieldset)),
+                              const atlas::FieldSet & srcFieldset,
+                              const atlas::FieldSet & tarFieldset) :
+     fieldsetNames_(tarFieldset.field_names()),
+     outputFSKeys_(createOutputFunctionSpaceKeys(tarFieldset)),
      differingOutputFSKeys_(createDifferingOutputFunctionSpaceKeys(outputFSKeys_)),
-     keyOutputGrids_(manageGridSubset(outputFSKeys_, differingOutputFSKeys_, *fieldset)),
+     keyOutputGrids_(manageGridSubset(outputFSKeys_, differingOutputFSKeys_, tarFieldset)),
      gaussNames_(prependFieldNamesWithGauss(fieldsetNames_)),
-     gaussGrid_(createGaussGrid(fieldset)),
+     gaussGrid_(createGaussGrid(tarFieldset)),
      inputFS_(createInputFS(gaussGrid_, differingOutputFSKeys_)),
-     outputFS_(createOutputFS(outputFSKeys_, differingOutputFSKeys_, *fieldset)),
+     outputFS_(createOutputFS(outputFSKeys_, differingOutputFSKeys_, tarFieldset)),
      matchingFS_(createMatchingMeshFunctionSpaces(inputFS_, keyOutputGrids_)),
      interps_(createAtlasInterpolations(inputFS_, matchingFS_, keyOutputGrids_)),
      redistr_(createAtlasRedistributions(matchingFS_,outputFS_))
@@ -426,7 +409,7 @@ void InterpRedistr::execute( const atlas::FieldSet & srcFieldSet,
 
     for (auto srcField : srcFieldSet) {
         std::string nameStr = srcField.name();
-        execute(srcField, targetFieldSet[nameStr.erase(0,6)]);
+        execute(srcField, targetFieldSet[nameStr]);
     }
 
 }
@@ -436,7 +419,7 @@ void InterpRedistr::executeAdjoint( atlas::FieldSet & srcFieldSet,
 
     for (auto srcField : srcFieldSet) {
         std::string nameStr = srcField.name();
-        executeAdjoint(srcField, targetFieldSet[nameStr.erase(0,6)]);
+        executeAdjoint(srcField, targetFieldSet[nameStr]);
     }
 
 }

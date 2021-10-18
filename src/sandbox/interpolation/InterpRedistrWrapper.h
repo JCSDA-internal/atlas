@@ -32,7 +32,8 @@ public:
     static const std::string classname() {return "unifiedmodel::AtlasInterpWrapper";}
 
    InterpRedistr( const eckit::Configuration & conf,
-                        std::shared_ptr<const atlas::FieldSet> & fieldset );
+                  const atlas::FieldSet & srcFieldset,
+                  const atlas::FieldSet & tarFieldset);
 
    InterpRedistr(){};
 
@@ -54,21 +55,21 @@ private:
     std::vector<std::pair<std::string, std::size_t>> outputFSKeys_;
     std::set<std::pair<std::string, std::size_t>> differingOutputFSKeys_;
     std::map< std::pair< std::string, std::size_t>,
-              std::unique_ptr<const atlas::StructuredGrid> > keyOutputGrids_;
+               atlas::StructuredGrid > keyOutputGrids_;
     const std::vector<std::string>  gaussNames_;
     atlas::StructuredGrid gaussGrid_;
 
     std::map<std::pair<std::string, std::size_t>,
-             std::unique_ptr<const atlas::functionspace::StructuredColumns>> inputFS_;
+             atlas::functionspace::StructuredColumns> inputFS_;
     std::map<std::pair<std::string, std::size_t>,
-             std::unique_ptr<const atlas::functionspace::StructuredColumns>> outputFS_;
+             atlas::functionspace::StructuredColumns> outputFS_;
     std::map<std::pair<std::string, std::size_t>,
-             std::unique_ptr<const atlas::functionspace::StructuredColumns>> matchingFS_;
+             atlas::functionspace::StructuredColumns> matchingFS_;
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Interpolation>>
+    std::map<std::pair<std::string, std::size_t>, atlas::Interpolation>
     interps_;
 
-    std::map<std::pair<std::string, std::size_t>, std::unique_ptr<const atlas::Redistribution>>
+    std::map<std::pair<std::string, std::size_t>, atlas::Redistribution>
     redistr_;
 
 };

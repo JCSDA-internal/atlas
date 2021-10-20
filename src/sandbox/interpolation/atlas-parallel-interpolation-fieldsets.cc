@@ -144,7 +144,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
     atlas::FieldSet srcFieldSet;
     atlas::FieldSet tgtFieldSet;
 
-    for (int i = 0; i < fs.getNoFields(); ++i) {
+    for (std::size_t i= 0; i < fs.getNoFields(); ++i) {
         auto f = FieldConfiguration(fs.getFieldConfiguration(i));
 
         // create grid
@@ -261,17 +261,47 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
         ++i;
    }
 
+
+  {
+
+
+      std::cout << " MATCHNIG MESH" << std::endl;
+
+      auto f = FieldConfiguration(fs.getFieldConfiguration(0));
+
+      auto funConfig =  util::Config( "halo", 1 ) |
+                        util::Config( "levels", f.getSourceLevels());
+
+
+      atlas::StructuredGrid sg(f.getSourceGridName());
+      atlas::StructuredGrid tg(f.getTargetGridName());
+
+      atlas::functionspace::StructuredColumns tgtFS_1(tg, new CheckerboardPartitioner(), funConfig);
+
+      atlas::functionspace::StructuredColumns matchFS(sg,
+                  atlas::grid::MatchingPartitioner(tgtFS_1),
+                  atlas::option::levels(f.getSourceLevels()) | atlas::option::halo(1));
+
+
+       std::cout << " MATCHING MESH END" << std::endl;
+
+
+   }
+   exit(0);
+
+   /*
    std::cout << " test b" << std::endl;
    std::vector<atlas::functionspace::StructuredColumns> matchFS;
    i = 0;
    for (auto & F : tgtFieldSet) {
        auto f = FieldConfiguration(fs.getFieldConfiguration(i));
        matchFS.emplace_back(atlas::StructuredGrid(atlas::Grid(f.getSourceGridName())),
-            new atlas::grid::MatchingPartitioner(tgtFS[i]),
+            atlas::grid::MatchingPartitioner(tgtFS[i]),
             atlas::option::levels(F.levels()) | atlas::option::halo(1) );
        ++i;
    }
 
+   */
    std::cout << " MATCHNIG MESH" << std::endl;
 
 

@@ -86,6 +86,8 @@ projection/detail/LonLatProjection.cc
 projection/detail/LonLatProjection.h
 projection/detail/MercatorProjection.cc
 projection/detail/MercatorProjection.h
+projection/detail/StretchProjection.cc
+projection/detail/StretchProjection.h
 projection/detail/ProjectionFactory.cc
 projection/detail/ProjectionFactory.h
 projection/detail/ProjectionImpl.cc

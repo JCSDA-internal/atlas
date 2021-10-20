@@ -80,10 +80,15 @@ const std::vector<std::string> prependFieldNamesWithGauss(
 const std::vector<std::pair<std::string, std::size_t> > createOutputFunctionSpaceKeys(const atlas::FieldSet & fieldset) {
 
     std::vector<std::pair<std::string, std::size_t> > key;
-    for (auto field : fieldset) {
+    for (auto & field : fieldset) {
         key.push_back(std::make_pair( atlas::functionspace::StructuredColumns(
                                       field.functionspace()).grid().name(),
                                       field.levels() ) );
+
+    }
+
+    for (auto & k : key) {
+        std::cout << atlas::mpi::rank() << " " << k.first << " " << k.second << std::endl;
     }
 
     return key;
@@ -112,10 +117,10 @@ manageGridSubset(const std::vector<std::pair<std::string, std::size_t>> & output
     atlas::idx_t i(0);
 
     atlas::StructuredGrid grid;
-    for (auto f : fieldset) {
+    for (auto & f : fieldset) {
         if (tmpKeys.erase(outputFSkeys[i])) {
             keysGrids[outputFSkeys[i]] =
-                atlas::StructuredGrid(atlas::functionspace::StructuredColumns(f.functionspace()).grid());
+                atlas::functionspace::StructuredColumns(f.functionspace()).grid();
         }
         ++i;
     }
@@ -155,6 +160,8 @@ std::map<std::pair<std::string, std::size_t>, atlas::functionspace::StructuredCo
 
         auto key = s.first;
 
+        std::cout << "input grids " << s.first.first << " " << s.second.name() << std::endl;
+
         atlas::functionspace::StructuredColumns inputFS(
                     s.second,
                     atlas::grid::Partitioner(new TransPartitioner() ),
@@ -186,9 +193,11 @@ atlas::functionspace::StructuredColumns>
         // get name of functionspace associated with f
         if (tmpKeys.erase(outputFSkeys[i])) {
 
-            fs = atlas::functionspace::StructuredColumns(f.functionspace());
+           atlas::functionspace::StructuredColumns fs(f.functionspace());
 
-            functionSpaces[outputFSkeys[i]] = fs;
+           std::cout << "output grids " << fs.grid().name() << std::endl;
+
+           functionSpaces[outputFSkeys[i]] = fs;
         }
         ++i;
     }
@@ -215,6 +224,7 @@ createMatchingMeshFunctionSpaces(
     std::set<std::string> inputGridNames;
     for (auto & f : inputFS) {
         auto key = f.first;
+        std::cout << "input grid names" << key.first << " " << key.second << std::endl;
         inputGridNames.insert(key.first);
     }
     if (inputGridNames.size() != 1 ) {
@@ -224,18 +234,35 @@ createMatchingMeshFunctionSpaces(
 
     std::pair<std::string, std::size_t> inputKey;
     inputKey.first = *(inputGridNames.begin());
+
+    std::cout << "keyOutGrids size" << keyOutputGrids.size() << std::endl;
     for (auto & s : keyOutputGrids) {
         auto key = s.first;
 
         // create input key
+
+        // copy levels from output grid.
         inputKey.second = key.second;
 
-        atlas::functionspace::StructuredColumns
-                outputFS( s.second,
-                          atlas::grid::MatchingPartitioner( inputFS.at(inputKey)),
-                          atlas::option::levels(key.second) | atlas::option::halo(1) );
+        std::cout << atlas::mpi::rank() <<  " mm "  << inputKey.first << " " << inputKey.second << " " <<
+                     inputFS.at(inputKey).grid().name() <<  " " << inputFS.at(inputKey).size() << " "  <<
+                     inputFS.at(inputKey).sizeOwned() << std::endl;
 
-        functionSpaces[key] = outputFS ;
+        auto p = atlas::grid::MatchingPartitioner(inputFS.at(inputKey));
+
+        std::cout << atlas::mpi::rank() <<  " after partitioner "  << p.nb_partitions() << " " << std::endl;
+
+        /*
+        atlas::functionspace::StructuredColumns
+                outputFS( s.second, p,
+                          atlas::option::levels(key.second) | atlas::option::halo(1) );
+                          */
+
+        std::cout << atlas::mpi::rank() <<  " after functionspace "  << std::endl;
+
+        functionSpaces[key] =     atlas::functionspace::StructuredColumns
+                         ( s.second, p,
+                          atlas::option::levels(key.second) | atlas::option::halo(1) );
 
     }
 

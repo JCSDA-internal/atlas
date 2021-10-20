@@ -3,13 +3,13 @@ include redistribution: true
 interpolation method: "linear"
 field configurations:
   - source grid name: "F6"
-    source partitioner name: "equal_regions"
-    target grid name: "L6"
+    source partitioner name: "trans"
+    target grid name: "L24x13"
     target partitioner name: "checkerboard"
     source levels: 2
   - source grid name: "F6"
-    source partitioner name: "equal_regions"
-    target grid name: "S6"
+    source partitioner name: "trans"
+    target grid name: "S24x12"
     target partitioner name: "checkerboard"
     source levels: 2
 

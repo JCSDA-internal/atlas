@@ -23,7 +23,6 @@
 #include "atlas/grid/detail/partitioner/TransPartitioner.h"
 #include "atlas/grid/detail/partitioner/CheckerboardPartitioner.h"
 
-
 #include "atlas/grid.h"
 
 #include "atlas/meshgenerator.h"
@@ -36,10 +35,6 @@
 #include "eckit/config/Configuration.h"
 
 #include "InterpRedistrWrapper.h"
-
-
-
-
 
 using namespace atlas;
 
@@ -144,8 +139,11 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
     atlas::FieldSet srcFieldSet;
     atlas::FieldSet tgtFieldSet;
 
+    /*
     for (std::size_t i= 0; i < fs.getNoFields(); ++i) {
         auto f = FieldConfiguration(fs.getFieldConfiguration(i));
+
+
 
         // create grid
         srcG.emplace_back(f.getSourceGridName());
@@ -230,7 +228,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
         //
         // Maybe a template solution?
 
-        /*
+
         if ( (f.getSourceGridName().compare(0, 2, "CS") == 0)) {
 
            auto funcS = functionspace::CubedSphereCellColumns(Field.functionspace());
@@ -245,7 +243,8 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
 
         } else {
-        */
+
+
 
             auto lonLatView = array::make_view<double, 2>(srcFS[i].lonlat() );
 
@@ -256,14 +255,13 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
             srcFS[i].haloExchange( Field );
 
 
-        // }
+        }
 
         ++i;
    }
-
+  */
 
   {
-
 
       std::cout << " MATCHNIG MESH" << std::endl;
 
@@ -271,7 +269,6 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
       auto funConfig =  util::Config( "halo", 1 ) |
                         util::Config( "levels", f.getSourceLevels());
-
 
       atlas::StructuredGrid sg(f.getSourceGridName());
       atlas::StructuredGrid tg(f.getTargetGridName());

@@ -175,23 +175,7 @@ CASE( "LAMstretch" ) {
         }
     }
 
-    /*
-    atlas::util::Config proj_grid_config;
-    proj_grid_config.set( "type", "stretch" );
-    proj_grid_config.set( "delta_low",  0.6545448275862076);
-    proj_grid_config.set( "delta_hi", 0.6545448275862076 );
-    proj_grid_config.set( "var_ratio", 1.0 );
-    proj_grid_config.set( "x_reg_start", 351.3869448275862 );
-    proj_grid_config.set( "y_reg_start", -5.008755777777777 );
-    proj_grid_config.set( "x_reg_end", 366.3633551724138 );
-    proj_grid_config.set( "y_reg_end", 8.66534677777778 );
-    proj_grid_config.set( "startx", 349.4335 );
-    proj_grid_config.set( "starty", -6.962199 );
-    proj_grid_config.set( "endx", 368.3168 );
-    proj_grid_config.set( "endy", 10.61879 );
-    proj_grid_config.set( "north_pole", {0.0, 90.0} );
 
-    */
 
     auto proj_reg = Projection( "stretch", Config( "delta_low", 0.6545448275862076 ) | Config( "delta_hi", 0.6511482758621128 ) |
                                                  Config( "var_ratio", 1.0 ) | Config( "x_reg_start", 351.3869448275862 ) |
@@ -223,6 +207,24 @@ CASE( "LAMstretch" ) {
             EXPECT_APPROX_EQ( ll1lat, ll2lat, 1.e-10 );
         }
     }
+
+    /*
+    //atlas::util::Config proj_grid_config;
+    //proj_grid_config.set( "type", "stretch" );
+    proj_reg( "type", "stretch" );
+    proj_reg.set( "delta_low",  0.6545448275862076);
+    proj_reg.set( "delta_hi", 0.6545448275862076 );
+    proj_reg.set( "var_ratio", 1.0 );
+    proj_reg.set( "x_reg_start", 351.3869448275862 );
+    proj_reg.set( "y_reg_start", -5.008755777777777 );
+    proj_reg.set( "x_reg_end", 366.3633551724138 );
+    proj_reg.set( "y_reg_end", 8.66534677777778 );
+    proj_reg.set( "startx", 349.4335 );
+    proj_reg.set( "starty", -6.962199 );
+    proj_reg.set( "endx", 368.3168 );
+    proj_reg.set( "endy", 10.61879 );
+    proj_reg.set( "north_pole", {0.0, 90.0} );
+    */
 
 }
 

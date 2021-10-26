@@ -52,7 +52,7 @@ public:
     bool strictlyRegional() const override { return true; }  // Stretch projection cannot be used for global grids
     RectangularLonLatDomain lonlatBoundingBox( const Domain& domain ) const override {
         return ProjectionImpl::lonlatBoundingBox( domain );
-    }
+     }
 
     //void stretch_LAM( eckit::Parametrisation&, PointXY );
     //atlas::PointXY stretch_LAM() const;

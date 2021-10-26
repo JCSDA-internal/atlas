@@ -11,6 +11,7 @@
 #include "atlas/projection/detail/StretchProjection.h"
 #include "tests/AtlasTestEnvironment.h"
 
+
 using namespace atlas::util;
 using namespace atlas::grid;
 
@@ -108,7 +109,7 @@ CASE( "LAMstretch" ) {
 
     atlas::grid::detail::grid::Structured::YSpace YS(YSpaceConfig);
 
-    /*
+    //Try to test also lonlaBoundingBox
     atlas::util::Config DomainConfig;
     DomainConfig.set("type", "rectangular"); // can be "global"(default) "zonal_band"
                                              // "empty"
@@ -117,7 +118,10 @@ CASE( "LAMstretch" ) {
     DomainConfig.set("ymin", -6.962199);
     DomainConfig.set("ymax", 10.61879);
     DomainConfig.set("units", "degrees"); // "degrees" is the default.
-    */
+
+    atlas::Domain Domain_lam(DomainConfig);
+
+    auto dom_lonlat = RectangularDomain(Domain_lam);
 
     //definition of stretched grid
     //auto grid = ReducedGaussianGrid( nx, proj );

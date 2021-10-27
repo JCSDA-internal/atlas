@@ -97,9 +97,6 @@ FieldSetConfiguration::FieldSetConfiguration(eckit::Configuration & conf) :
 
 class AtlasParallelInterpolationFieldSet : public AtlasTool {
     int execute( const AtlasTool::Args& args ) override;
-
-  //  int numberOfPositionalArguments() override { return -1; }
-  //  int minimumPositionalArguments() override { return 0; }
 public:
     AtlasParallelInterpolationFieldSet( int argc, char* argv[] ) : AtlasTool( argc, argv ) {
         add_option( new SimpleOption<std::string>( "yaml filename", "file name of yaml" ) );
@@ -139,11 +136,8 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
     atlas::FieldSet srcFieldSet;
     atlas::FieldSet tgtFieldSet;
 
-    /*
     for (std::size_t i= 0; i < fs.getNoFields(); ++i) {
         auto f = FieldConfiguration(fs.getFieldConfiguration(i));
-
-
 
         // create grid
         srcG.emplace_back(f.getSourceGridName());
@@ -236,33 +230,29 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
            auto lonLatView = array::make_view<double, 2>(funcS.lonlat() );
 
            funcS.parallel_for([&]( idx_t index, idx_t k )
-             { testView1( index, k ) =  testFunction(lonLatView(index, LON),
-                                                     lonLatView(index, LAT)); } );
+             { testView1( index, k ) = testFunction(lonLatView(index, LON),
+                                                    lonLatView(index, LAT)); } );
 
            funcS.haloExchange( Field );
 
 
         } else {
 
-
-
             auto lonLatView = array::make_view<double, 2>(srcFS[i].lonlat() );
 
             srcFS[i].parallel_for([&]( idx_t index, idx_t k )
-              { testView1( index, k ) =  testFunction(lonLatView(index, LON),
-                                                      lonLatView(index, LAT)); } );
+              { testView1( index, k ) = testFunction(lonLatView(index, LON),
+                                                     lonLatView(index, LAT)); } );
 
             srcFS[i].haloExchange( Field );
-
 
         }
 
         ++i;
    }
-  */
+
 
   {
-
       std::cout << " MATCHNIG MESH" << std::endl;
 
       auto f = FieldConfiguration(fs.getFieldConfiguration(0));
@@ -281,27 +271,9 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
 
        std::cout << " MATCHING MESH END" << std::endl;
-
-
-   }
-   exit(0);
-
-   /*
-   std::cout << " test b" << std::endl;
-   std::vector<atlas::functionspace::StructuredColumns> matchFS;
-   i = 0;
-   for (auto & F : tgtFieldSet) {
-       auto f = FieldConfiguration(fs.getFieldConfiguration(i));
-       matchFS.emplace_back(atlas::StructuredGrid(atlas::Grid(f.getSourceGridName())),
-            atlas::grid::MatchingPartitioner(tgtFS[i]),
-            atlas::option::levels(F.levels()) | atlas::option::halo(1) );
-       ++i;
    }
 
-   */
    std::cout << " MATCHNIG MESH" << std::endl;
-
-
 
    // get main program to interface to wrapper.
    // note that (unlike here) the instantiation of the wrapper object may use

@@ -1,3 +1,10 @@
+/*
+ * (C) Crown Copyright 2021 Met Office
+ *
+ * This software is licensed under the terms of the Apache Licence Version 2.0
+ * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+ */
+
 #include <algorithm>
 #include <vector>
 
@@ -11,12 +18,12 @@
 #include "atlas/projection/detail/StretchProjection.h"
 #include "tests/AtlasTestEnvironment.h"
 
-
 using namespace atlas::util;
 using namespace atlas::grid;
 
 namespace {
-// use a vector of double instead
+
+// use vectors of double for testing
 const double lon_LAM_str[] = {
                                 348.9838795150959,  349.8677242998692,  350.6659835640297,  351.3869448275862,
                                 352.0380931034483,  352.6892413793103,  353.3403896551724,  353.9915379310345,
@@ -65,33 +72,12 @@ namespace atlas {
 namespace test {
 CASE( "LAMstretch" ) {
 
-    /*
-    double delta_low_; //resolution of the host model
-    double delta_high_; //resolution of the regional model (regular grid)
-    double var_ratio_; //power used for the stretching
-    double x_reg_start_; //xstart of the internal regional grid
-    double y_reg_start_; //ystart of the internal regional grid
-    double x_reg_end_; //xend of the internal regional grid
-    double y_reg_end_; ////yend of the internal regional grid
-    double startx_; //domain startx
-    double endx_; //domain endx
-    double starty_; //domain starty
-    double endy_; //domain endy
-    */
-
-
-
     auto proj = Projection( "stretch", Config( "delta_low", 0.6545448275862076 ) | Config( "delta_hi", 0.6511482758621128 ) |
                                                  Config( "var_ratio", 1.13 ) | Config( "x_reg_start", 351.3869448275862 ) |
                                                  Config( "y_reg_start", -5.008755777777777 ) | Config( "x_reg_end", 366.3633551724138 ) |
                                                  Config( "y_reg_end", 8.66534677777778 ) | Config( "startx", 349.4335) |
                                                  Config( "starty",  -6.962199) | Config( "endx", 368.3168) | Config( "endy", 10.61879) |
                                                  Config( "north_pole", {0.0, 90.0} ) );
-
-
-
-
-    std::cout<< "projection name " << proj.type() <<std::endl;
 
     atlas::util::Config XSpaceConfig;
     XSpaceConfig.set( "type", "linear" );
@@ -109,32 +95,7 @@ CASE( "LAMstretch" ) {
 
     atlas::grid::detail::grid::Structured::YSpace YS(YSpaceConfig);
 
-    //Try to test also lonlaBoundingBox
-    atlas::util::Config DomainConfig;
-    DomainConfig.set("type", "rectangular"); // can be "global"(default) "zonal_band"
-                                             // "empty"
-    DomainConfig.set("xmin", 349.4335);
-    DomainConfig.set("xmax", 368.3168);
-    DomainConfig.set("ymin", -6.962199);
-    DomainConfig.set("ymax", 10.61879);
-    DomainConfig.set("units", "degrees"); // "degrees" is the default.
-
-    atlas::Domain Domain_lam(DomainConfig);
-
-    //definition of the domain
-    auto dom_lonlat = RectangularDomain(Domain_lam);
-
-    EXPECT( dom_lonlat.type() == std::string( "rectangular" ) );
-    RectangularDomain rd = dom_lonlat;
-    EXPECT( rd == true );
-    EXPECT( rd.xmin() == 349.4335 );
-    EXPECT( rd.xmax() == 368.3168 );
-    EXPECT( rd.ymin() == -6.962199 );
-    EXPECT( rd.ymax() == 10.61879 );
-
-
-    //definition of stretched grid
-    //auto grid = ReducedGaussianGrid( nx, proj );
+    // definition of stretched grid
     auto grid_st = StructuredGrid(XS, YS, proj );
 
     // create regular grid
@@ -171,10 +132,7 @@ CASE( "LAMstretch" ) {
     std::vector<double> lat_p_arr_st(sizej);
     std::vector<double> lat_p_arr(sizej);
 
-
-
-
-    //check over regular grid points stretched using new atlas object and check using look-up table
+    // check over regular grid points stretched using new atlas object and check using look-up table
     for (atlas::idx_t j = nodes_reg.j_begin(); j < nodes_reg.j_end(); ++j) {
         for (atlas::idx_t i = nodes_reg.i_begin(j); i < nodes_reg.i_end(j); ++i) {
             auto ll1lon = lon_LAM_str[i];
@@ -182,13 +140,22 @@ CASE( "LAMstretch" ) {
             auto ll2 = grid_st.lonlat( i, j );
             auto ll2lon = ll2.lon();
             auto ll2lat = ll2.lat();
-            //std::cout << " i lon: " << i << " j lat: " << j << std::endl;
-            //std::cout << "lon from array ll1: " << ll1lon << " lon computed ll2: " << ll2lon << std::endl;
             EXPECT_APPROX_EQ( ll1lon , ll2lon, 1.e-10 );
             EXPECT_APPROX_EQ( ll1lat, ll2lat, 1.e-10 );
         }
     }
-
+    // Check if bounding box is correct
+        {
+            RectangularLonLatDomain bb{reg_grid.lonlatBoundingBox()};
+            const double tolerance = 1.e-6;
+            EXPECT_APPROX_EQ( bb.west(), 349.4335, tolerance );
+            EXPECT_APPROX_EQ( bb.east(), 368.3168, tolerance );
+            EXPECT_APPROX_EQ( bb.south(), -6.962199, tolerance );
+            EXPECT_APPROX_EQ( bb.north(), 10.61879, tolerance );
+            for ( PointLonLat p : reg_grid.lonlat() ) {
+                EXPECT( bb.contains( p ) );
+            }
+          }
 
 
     auto proj_reg = Projection( "stretch", Config( "delta_low", 0.6545448275862076 ) | Config( "delta_hi", 0.6511482758621128 ) |
@@ -197,17 +164,10 @@ CASE( "LAMstretch" ) {
                                                  Config( "y_reg_end", 8.66534677777778 ) | Config( "startx", 349.4335) |
                                                  Config( "starty",  -6.962199) | Config( "endx", 368.3168) | Config( "endy", 10.61879) |
                                                  Config( "north_pole", {0.0, 90.0} ) );
-    //definition of stretched grid
+    // definition of stretched grid
     auto grid_reg = StructuredGrid(XS, YS, proj_reg );
 
-
-    std::cout<< "projection name " << proj.type() <<std::endl;
-
-    //definition of stretched grid
-    //auto grid_reg = StructuredGrid(proj_grid_config );
-
-
-    //check over regular grid points stretched using new atlas object and check using look-up table
+    // check over regular grid points stretched using new atlas object and check using look-up table
     for (atlas::idx_t j = nodes_reg.j_begin(); j < nodes_reg.j_end(); ++j) {
         for (atlas::idx_t i = nodes_reg.i_begin(j); i < nodes_reg.i_end(j); ++i) {
             auto ll1lon = lon_LAM_reg[i];
@@ -215,8 +175,6 @@ CASE( "LAMstretch" ) {
             auto ll2 = grid_reg.lonlat( i, j );
             auto ll2lon = ll2.lon();
             auto ll2lat = ll2.lat();
-            //std::cout << " i lon: " << i << " j lat: " << j << std::endl;
-            //std::cout << "lon from array ll1: " << ll1lon << " lon computed ll2: " << ll2lon << std::endl;
             EXPECT_APPROX_EQ( ll1lon , ll2lon, 1.e-10 );
             EXPECT_APPROX_EQ( ll1lat, ll2lat, 1.e-10 );
         }

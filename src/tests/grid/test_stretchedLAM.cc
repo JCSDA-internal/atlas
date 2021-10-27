@@ -121,7 +121,17 @@ CASE( "LAMstretch" ) {
 
     atlas::Domain Domain_lam(DomainConfig);
 
+    //definition of the domain
     auto dom_lonlat = RectangularDomain(Domain_lam);
+
+    EXPECT( dom_lonlat.type() == std::string( "rectangular" ) );
+    RectangularDomain rd = dom_lonlat;
+    EXPECT( rd == true );
+    EXPECT( rd.xmin() == 349.4335 );
+    EXPECT( rd.xmax() == 368.3168 );
+    EXPECT( rd.ymin() == -6.962199 );
+    EXPECT( rd.ymax() == 10.61879 );
+
 
     //definition of stretched grid
     //auto grid = ReducedGaussianGrid( nx, proj );

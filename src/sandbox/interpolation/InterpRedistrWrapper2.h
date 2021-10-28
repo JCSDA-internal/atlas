@@ -1,6 +1,6 @@
 /*
  *
- * (C) British Crown Copyright 2021, Met Office
+ * (C) Crown Copyright 2021, Met Office
  *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -59,10 +59,6 @@ private:
     std::vector<std::tuple<std::string, std::string, std::size_t>> outputFSKeys_;
     std::set<std::tuple<std::string, std::string, std::size_t>> differingInputFSKeys_;
     std::set<std::tuple<std::string, std::string, std::size_t>> differingOutputFSKeys_;
-    std::map< std::pair< std::string, std::size_t>,
-               atlas::StructuredGrid > keyOutputGrids_;
-    const std::vector<std::string>  gaussNames_;
-    atlas::StructuredGrid gaussGrid_;
 
     std::map<std::tuple<std::string, std::string, std::size_t>,
              atlas::functionspace::StructuredColumns> inputFS_;

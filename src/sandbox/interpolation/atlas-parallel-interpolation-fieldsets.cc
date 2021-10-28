@@ -16,7 +16,6 @@
 #include "atlas/field.h"
 #include "atlas/functionspace.h"
 #include "atlas/functionspace/CubedSphereColumns.h"
-#include "atlas/functionspace/NodeColumns.h"
 #include "atlas/functionspace/StructuredColumns.h"
 
 #include "atlas/grid/Partitioner.h"
@@ -36,7 +35,7 @@
 #include "eckit/config/Resource.h"
 #include "eckit/config/Configuration.h"
 
-#include "InterpRedistrWrapper2.h"
+#include "InterpRedistrWrapper3.h"
 
 using namespace atlas;
 using atlas::output::Gmsh;
@@ -217,15 +216,6 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
         auto testView1 = array::make_view<double, 2>( Field );
 
-        // Willem it would be nice to be able to collapse this.
-        // Ideally some like
-        //  auto funcS = ( f.getSourceGridName().compare(0, 2, "CS") ?
-        //           functionspace::CubedSphereCellColumns(Field.functionspace()) :
-        //           functionspace::StructuredColumns(Field.functionspace()) )
-        //
-        //
-        // Maybe a template solution?
-
 
         if ( (f.getSourceGridName().compare(0, 2, "CS") == 0)) {
 
@@ -257,7 +247,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
 
   {
-      std::cout << " MATCHNIG MESH" << std::endl;
+      std::cout << "TESTING SNIPPET MATCHING MESH START" << std::endl;
 
       auto f = FieldConfiguration(fs.getFieldConfiguration(0));
 
@@ -267,17 +257,16 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
       atlas::StructuredGrid sg(f.getSourceGridName());
       atlas::StructuredGrid tg(f.getTargetGridName());
 
-      atlas::functionspace::StructuredColumns tgtFS_1(tg, new CheckerboardPartitioner(), funConfig);
+      atlas::functionspace::StructuredColumns srcFS_1(sg, new TransPartitioner(), funConfig);
 
-      atlas::functionspace::StructuredColumns matchFS(sg,
-                  atlas::grid::MatchingPartitioner(tgtFS_1),
+      atlas::functionspace::StructuredColumns matchFS(tg,
+                  atlas::grid::MatchingPartitioner(srcFS_1),
                   atlas::option::levels(f.getSourceLevels()) | atlas::option::halo(1));
 
 
-       std::cout << " MATCHING MESH END" << std::endl;
+       std::cout << "TESTING SNIPPET MATCHING MESH END" << std::endl;
    }
 
-   std::cout << " MATCHING MESH" << std::endl;
 
    // get main program to interface to wrapper.
    // note that (unlike here) the instantiation of the wrapper object may use
@@ -288,7 +277,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
    std::cout << "create interpolation obj" << std::endl;
 
-   InterpRedistr2 interp(conf, srcFieldSet, tgtFieldSet);
+   InterpRedistr3 interp(conf, srcFieldSet, tgtFieldSet);
 
    std::cout << "execute interpolation obj" << std::endl;
 
@@ -321,10 +310,6 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
           Gmsh gmsh( "tgt_field"+ std::to_string(i) + ".msh" );
           gmsh.write( mesh );
           gmsh.write( tgtField );
-
-
-          std::cout << "distribution  " << i  <<  tgtField.functionspace().distribution() << std::endl;
-
 
           ++i;
        }

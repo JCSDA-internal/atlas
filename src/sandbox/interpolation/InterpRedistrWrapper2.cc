@@ -1,5 +1,5 @@
 /*
- * (C) Britsh Copyright 2021 Met Office UK
+ * (C) Crown Copyright 2021 Met Office
  *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -21,8 +21,6 @@
 
 #include "atlas/grid/Partitioner.h"
 #include "atlas/grid/detail/partitioner/MatchingMeshPartitioner.h"
-#include "atlas/grid/detail/partitioner/TransPartitioner.h"
-
 
 #include "atlas/redistribution/Redistribution.h"
 #include "atlas/field/Field.h"
@@ -32,7 +30,6 @@
 
 #include "InterpRedistrWrapper2.h"
 
-using atlas::grid::detail::partitioner::TransPartitioner;
 using atlas::grid::detail::partitioner::MatchingMeshPartitioner;
 
 namespace {

@@ -22,6 +22,8 @@ ecbuild_add_executable(
             InterpRedistrWrapper.cc
             InterpRedistrWrapper2.h
             InterpRedistrWrapper2.cc
+            InterpRedistrWrapper3.h
+            InterpRedistrWrapper3.cc
     LIBS    atlas
     NOINSTALL
 )

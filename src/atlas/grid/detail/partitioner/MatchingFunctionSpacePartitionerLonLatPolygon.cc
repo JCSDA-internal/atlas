@@ -54,7 +54,6 @@ void MatchingFunctionSpacePartitionerLonLatPolygon::partition( const Grid& grid,
             size_t num_threads = atlas_omp_get_max_threads();
             size_t chunk_size  = grid.size() / ( 1000 * num_threads );
             size_t chunks      = num_threads == 1 ? 1 : std::max( size_t( 1 ), size_t( grid.size() ) / chunk_size );
-
             atlas_omp_pragma(omp parallel for schedule(dynamic,1))
             for( size_t chunk=0; chunk < chunks; ++chunk) {
                 const size_t begin = chunk * size_t( grid.size() ) / chunks;

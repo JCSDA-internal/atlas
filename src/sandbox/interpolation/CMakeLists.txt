@@ -20,6 +20,8 @@ ecbuild_add_executable(
     SOURCES atlas-parallel-interpolation-fieldsets.cc
             InterpRedistrWrapper.h
             InterpRedistrWrapper.cc
+            InterpRedistrWrapper2.h
+            InterpRedistrWrapper2.cc
     LIBS    atlas
     NOINSTALL
 )

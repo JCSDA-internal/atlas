@@ -36,7 +36,7 @@
 #include "eckit/config/Resource.h"
 #include "eckit/config/Configuration.h"
 
-#include "InterpRedistrWrapper.h"
+#include "InterpRedistrWrapper2.h"
 
 using namespace atlas;
 using atlas::output::Gmsh;
@@ -277,7 +277,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
        std::cout << " MATCHING MESH END" << std::endl;
    }
 
-   std::cout << " MATCHNIG MESH" << std::endl;
+   std::cout << " MATCHING MESH" << std::endl;
 
    // get main program to interface to wrapper.
    // note that (unlike here) the instantiation of the wrapper object may use
@@ -288,7 +288,7 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
 
    std::cout << "create interpolation obj" << std::endl;
 
-   InterpRedistr interp(conf, srcFieldSet, tgtFieldSet);
+   InterpRedistr2 interp(conf, srcFieldSet, tgtFieldSet);
 
    std::cout << "execute interpolation obj" << std::endl;
 
@@ -321,9 +321,16 @@ int AtlasParallelInterpolationFieldSet::execute(const AtlasTool::Args &args) {
           Gmsh gmsh( "tgt_field"+ std::to_string(i) + ".msh" );
           gmsh.write( mesh );
           gmsh.write( tgtField );
+
+
+          std::cout << "distribution  " << i  <<  tgtField.functionspace().distribution() << std::endl;
+
+
           ++i;
        }
    }
+
+
 
 
    return 0;

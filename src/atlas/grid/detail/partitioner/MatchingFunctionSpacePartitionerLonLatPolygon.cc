@@ -46,27 +46,17 @@ void MatchingFunctionSpacePartitionerLonLatPolygon::partition( const Grid& grid,
     }
     else {
 
-        std::cout << "1 " << atlas::mpi::rank() << std::endl;
         const auto& p = partitioned_.polygon();
 
-        std::cout << "2 " << atlas::mpi::rank() << std::endl;
-
         int rank = mpi::rank();
-
-        std::cout << "3 " << atlas::mpi::rank() << std::endl;
-
 
         util::PolygonXY poly{p};
         {
             ATLAS_TRACE( "point-in-polygon check for entire grid (" + std::to_string( grid.size() ) + " points)" );
             size_t num_threads = atlas_omp_get_max_threads();
-
-            std::cout << "4 " << atlas::mpi::rank() << " " << num_threads << " " << grid.size() << std::endl;
-
             size_t chunk_size  = grid.size() / ( 1000 * num_threads );
             size_t chunks      = num_threads == 1 ? 1 : std::max( size_t( 1 ), size_t( grid.size() ) / chunk_size );
 
-            std::cout << "5 " << atlas::mpi::rank() << " " << num_threads << " " << chunk_size << " " << chunks << std::endl;
             atlas_omp_pragma(omp parallel for schedule(dynamic,1))
             for( size_t chunk=0; chunk < chunks; ++chunk) {
                 const size_t begin = chunk * size_t( grid.size() ) / chunks;

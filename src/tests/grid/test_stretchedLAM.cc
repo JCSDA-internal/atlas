@@ -144,21 +144,6 @@ CASE( "LAMstretch" ) {
             EXPECT_APPROX_EQ( ll1lat, ll2lat, 1.e-10 );
         }
     }
-    // Check if bounding box is correct
-        {
-         #include "atlas/domain.h"
-            RectangularLonLatDomain bb{reg_grid.lonlatBoundingBox()};
-            EXPECT( RectangularLonLatDomain( bb ) == true );
-            const double tolerance = 1.e-6;
-            EXPECT_APPROX_EQ( bb.west(), 349.4335, tolerance );
-            EXPECT_APPROX_EQ( bb.east(), 368.3168, tolerance );
-            EXPECT_APPROX_EQ( bb.south(), -6.962199, tolerance );
-            EXPECT_APPROX_EQ( bb.north(), 10.61879, tolerance );
-            for ( PointLonLat p : reg_grid.lonlat() ) {
-                EXPECT( bb.contains( p ) );
-            }
-          }
-
 
     auto proj_reg = Projection( "stretch", Config( "delta_low", 0.6545448275862076 ) | Config( "delta_hi", 0.6511482758621128 ) |
                                                  Config( "var_ratio", 1.0 ) | Config( "x_reg_start", 351.3869448275862 ) |
@@ -168,6 +153,22 @@ CASE( "LAMstretch" ) {
                                                  Config( "north_pole", {0.0, 90.0} ) );
     // definition of stretched grid
     auto grid_reg = StructuredGrid(XS, YS, proj_reg );
+    // Check if bounding box is correct
+        {
+            RectangularLonLatDomain bb{grid_reg.lonlatBoundingBox()};
+            EXPECT( RectangularLonLatDomain( bb ) );
+            const double tolerance = 1.e-6;
+            EXPECT_APPROX_EQ( bb.west(), 349.4335, tolerance );
+            EXPECT_APPROX_EQ( bb.east(), 368.3168, tolerance );
+            EXPECT_APPROX_EQ( bb.south(), -6.962199, tolerance );
+            EXPECT_APPROX_EQ( bb.north(), 10.61879, tolerance );
+            for ( PointLonLat p : grid_reg.lonlat() ) {
+                EXPECT( bb.contains( p ) );
+            }
+          }
+
+
+
 
     // check over regular grid points stretched using new atlas object and check using look-up table
     for (atlas::idx_t j = nodes_reg.j_begin(); j < nodes_reg.j_end(); ++j) {

@@ -45,21 +45,30 @@ void MatchingFunctionSpacePartitionerLonLatPolygon::partition( const Grid& grid,
         omp::fill( part, part + grid.size(), 0 );
     }
     else {
+
         const auto& p = partitioned_.polygon();
 
         int rank = mpi::rank();
+
         util::PolygonXY poly{p};
         {
             ATLAS_TRACE( "point-in-polygon check for entire grid (" + std::to_string( grid.size() ) + " points)" );
             size_t num_threads = atlas_omp_get_max_threads();
             size_t chunk_size  = grid.size() / ( 1000 * num_threads );
             size_t chunks      = num_threads == 1 ? 1 : std::max( size_t( 1 ), size_t( grid.size() ) / chunk_size );
+
             atlas_omp_pragma(omp parallel for schedule(dynamic,1))
             for( size_t chunk=0; chunk < chunks; ++chunk) {
                 const size_t begin = chunk * size_t( grid.size() ) / chunks;
                 const size_t end   = ( chunk + 1 ) * size_t( grid.size() ) / chunks;
                 auto it            = grid.xy().begin() + chunk * grid.size() / chunks;
+
+                std::cout << begin << " " << end << " " << std::endl;
                 for ( size_t n = begin; n < end; ++n ) {
+
+
+                    std::cout << begin << " " << end << " " << n << " " << atlas::mpi::rank() << std::endl;
+
                     if ( poly.contains( *it ) ) {
                         part[n] = rank;
                     }

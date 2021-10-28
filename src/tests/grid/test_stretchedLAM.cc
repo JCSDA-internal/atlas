@@ -146,7 +146,9 @@ CASE( "LAMstretch" ) {
     }
     // Check if bounding box is correct
         {
+         #include "atlas/domain.h"
             RectangularLonLatDomain bb{reg_grid.lonlatBoundingBox()};
+            EXPECT( RectangularLonLatDomain( bb ) == true );
             const double tolerance = 1.e-6;
             EXPECT_APPROX_EQ( bb.west(), 349.4335, tolerance );
             EXPECT_APPROX_EQ( bb.east(), 368.3168, tolerance );

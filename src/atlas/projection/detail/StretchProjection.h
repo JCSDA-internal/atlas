@@ -46,21 +46,23 @@ public:
      }
 
     void checkvalue(const double&, const double&) const;
-    double general_stretch (double&, const bool&, int&, const int&) const;
+    double general_stretch (double&, const bool&, int&, const int&, const int&) const;
 
 protected:
 
-    double delta_low_; ///< resolution of the host model
+    double delta_low_; ///< resolution of the external regular grid (rim) it should be larger than the last stretch
     double delta_high_; ///< /< resolution of the regional model (regular grid)
     double var_ratio_; ///< power used for the stretching
     double x_reg_start_; ///< xstart of the internal regional grid
     double y_reg_start_; ///< ystart of the internal regional grid
     double x_reg_end_; ///< xend of the internal regional grid
     double y_reg_end_; ///< yend of the internal regional grid
-    double startx_; ///< domain startx
-    double endx_; ///< domain endx
-    double starty_; ///< domain starty
-    double endy_; ///< domain endy
+    double startx_; ///< original domain startx
+    double endx_; ///< original domain endx
+    double starty_; ///< original domain starty
+    double endy_; ///< original domain endy
+    double rim_widthx_; ///< xsize of the rim
+    double rim_widthy_; ///< ysize of the rim
 
     void setup( const eckit::Parametrisation& p );
 

@@ -1,4 +1,4 @@
-/*
+/**
 * (C) Crown copyright 2021, Met Office
 *
 * This software is licensed under the terms of the Apache Licence Version 2.0
@@ -20,24 +20,24 @@ class StretchLAM final : public ProjectionImpl {
 public:
     using Spec = ProjectionImpl::Spec;
 
-    // constructor uses parametrisation and point to stretch
+    ///< constructor uses parametrisation and point to stretch
     StretchLAM(const eckit::Parametrisation& );
-    // projection name
+    ///< projection name
     static std::string static_type() { return Rotation::typePrefix() + "stretch"; }
     std::string type() const override { return static_type(); }
 
-    // projection and inverse projection
+    ///< projection and inverse projection
     void xy2lonlat( double crd[] ) const override;
     void lonlat2xy( double crd[] ) const override;
 
-    // specification for stretching
+    ///< specification for stretching
     Spec spec() const override;
 
     std::string units() const override { return "meters"; }
 
     void hash( eckit::Hash& ) const override;
 
-    // NOT for the moment
+    ///< NOT for the moment
     Jacobian jacobian( const PointLonLat& ) const override;
 
     bool strictlyRegional() const override { return true; }  ///< Stretch projection cannot be used for global grids
@@ -73,6 +73,6 @@ private:
 using StretchProjection        = StretchLAM<NotRotated>;
 using RotatedStretchProjection = StretchLAM<Rotated>;
 
-}  // namespace detail
-}  // namespace projection
-}  // namespace atlas
+}  ///< namespace detail
+}  ///< namespace projection
+}  ///< namespace atlas

@@ -368,6 +368,8 @@ meshgenerator/MeshGenerator.cc
 meshgenerator/MeshGenerator.h
 meshgenerator/detail/CubedSphereMeshGenerator.h
 meshgenerator/detail/CubedSphereMeshGenerator.cc
+meshgenerator/detail/CubedSphereDualMeshGenerator.h
+meshgenerator/detail/CubedSphereDualMeshGenerator.cc
 meshgenerator/detail/NodalCubedSphereMeshGenerator.h
 meshgenerator/detail/NodalCubedSphereMeshGenerator.cc
 meshgenerator/detail/DelaunayMeshGenerator.h
@@ -644,6 +646,7 @@ array/helpers/ArrayInitializer.h
 array/helpers/ArrayAssigner.h
 array/helpers/ArrayWriter.h
 array/helpers/ArraySlicer.h
+array/helpers/ArrayCopier.h
 #array/Table.h
 #array/Table.cc
 #array/TableView.h

@@ -5,7 +5,7 @@
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
  */
 
-#include <ostream>
+#include <iostream>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -51,12 +51,31 @@ namespace {
 const std::vector<std::tuple<std::string, std::string, std::size_t> >
         createFunctionSpaceKeys(const atlas::FieldSet & fieldset) {
 
+    std::cout << " create createFunctionSpaceKeys " <<  std::endl;
+
     std::vector<std::tuple<std::string, std::string, std::size_t> > key;
+
+
     for (auto & field : fieldset) {
-        key.push_back(std::make_tuple( atlas::functionspace::StructuredColumns(
-                                      field.functionspace()).grid().name(),
-                                      field.functionspace().distribution(),
-                                      field.levels() ) );
+
+       const auto SC = atlas::functionspace::StructuredColumns(field.functionspace());
+
+       std::cout << "SC type " << SC.type() << std::endl;
+
+       if (SC) {
+         key.push_back(std::make_tuple( SC.grid().name(),
+                                       field.functionspace().distribution(),
+                                       field.levels() ) );
+       } else  {
+
+         const auto CS = atlas::functionspace::CubedSphereCellColumns(field.functionspace());
+
+         std::cout << "CS type " << CS.type() << std::endl;
+
+         key.push_back(std::make_tuple( CS.mesh().grid().name(),
+                                        field.functionspace().distribution(),
+                                        field.levels() ) );
+       }
 
     }
 
@@ -73,6 +92,8 @@ const std::set<std::tuple<std::string, std::string, std::size_t>>
 createDifferingFunctionSpaceKeys(const std::vector<std::tuple<std::string, std::string,
                                  std::size_t>> & FSkeys ) {
 
+   std::cout << " create createDifferingFunctionSpaceKeys " <<  std::endl;
+
    std::set<std::tuple<std::string, std::string, std::size_t>> differingFSKeys;
    std::for_each(FSkeys.begin(), FSkeys.end(),
                  [&](const std::tuple<std::string, std::string, std::size_t> elem)
@@ -86,6 +107,8 @@ atlas::FunctionSpace>
     createFS(const std::vector<std::tuple<std::string, std::string, std::size_t>> & FSkeys,
              const std::set<std::tuple<std::string, std::string, std::size_t>> & differingFSkeys,
              const atlas::FieldSet & fieldset) {
+
+    std::cout << " create fs atlas " <<  std::endl;
 
     std::map<std::tuple<std::string, std::string, std::size_t>, atlas::FunctionSpace>
         functionSpaces;
@@ -121,6 +144,8 @@ createMatchingMeshFunctionSpaces(
       const std::map<std::tuple<std::string, std::string, std::size_t>,
           atlas::FunctionSpace> & outputFS) {
 
+    std::cout << " atlas matching construct" << std::endl;
+
     std::map<std::tuple<std::string, std::string, std::size_t, std::string>, atlas::FunctionSpace>
         functionSpaces;
 
@@ -134,6 +159,8 @@ createMatchingMeshFunctionSpaces(
                                                 std::get<2>(inputKeys[i]), std::get<0>(outputKeys[i])));
     }
 
+    std::cout<< "BLAH 2" << std::endl;
+
 
     // Note I am recreating the output grid here.
     // This might be more costly than it should
@@ -141,6 +168,11 @@ createMatchingMeshFunctionSpaces(
         auto inputKey = std::make_tuple(std::get<0>(k), std::get<1>(k), std::get<2>(k));
         auto p = atlas::grid::MatchingPartitioner(inputFS.at(inputKey));
         auto g = atlas::Grid(std::get<3>(k));
+
+
+        std::cout<< "BLAH" << std::endl;
+
+        std::cout << " g = " << g.spec() << std::endl;
 
         auto outputGridName = std::string( std::get<3>(k) );
 
@@ -158,7 +190,9 @@ createMatchingMeshFunctionSpaces(
             // Willem - is this how you envisaged using StructuredColumns matching mesh.
             // on a cubed sphere mesh?
 
-            atlas::Mesh mesh = meshGen.generate(g, p.partition(g) );
+            std::cout << "cubed sphere grid name " << g.name() << std::endl;
+
+            atlas::Mesh mesh = meshGen.generate(g, p);
 
             functionSpaces[k] = atlas::functionspace::CubedSphereCellColumns(mesh);
 
@@ -182,7 +216,7 @@ createAtlasInterpolations(const std::map< std::tuple<std::string, std::string, s
                           const std::map< std::tuple<std::string, std::string, std::size_t, std::string>,
                           atlas::FunctionSpace> & matchingFS) {
 
-    std::cout << " atlas wrapper construct" << std::endl;
+    std::cout << " atlas interp construct" << std::endl;
 
     // maybe we should expose this configuration
     atlas::util::Config interp;
@@ -214,6 +248,8 @@ createAtlasRedistributions(const std::vector<std::tuple<std::string, std::string
                            atlas::FunctionSpace> & matchingFS,
                            const std::map< std::tuple<std::string, std::string, std::size_t>,
                            atlas::FunctionSpace> & outputFS) {
+
+    std::cout << "redistr" <<std::endl;
 
     std::map< std::tuple<std::string, std::string, std::size_t, std::string, std::string>, atlas::Redistribution>
             redistributions;
@@ -273,26 +309,24 @@ void InterpRedistr3::execute( const atlas::Field & srcField,
 
     auto srcFS = atlas::functionspace::StructuredColumns(srcField.functionspace());
 
-    // pointer to cast to structured columns
-    const auto * tgtSCPtr =
-        atlas::FunctionSpace(tgtField.functionspace()).get()->cast<atlas::functionspace::detail::StructuredColumns>();
+    // cast to structured columns
+    const auto tgtSC = atlas::functionspace::StructuredColumns(tgtField.functionspace());
 
-    // pointer to cast to cubed sphere
+    // cast to cubed sphere
     // POINT2 ... Note that I am unclear whether I am casting to the right object.
-    const auto * tgtCSPtr =
-        atlas::FunctionSpace(tgtField.functionspace()).get()->cast<atlas::functionspace::CubedSphereCellColumns>();
+    const auto tgtCS = atlas::functionspace::CubedSphereCellColumns(tgtField.functionspace());
 
     std::string tgtGridName;
     std::string tgtDistributionName;
-    if ( tgtSCPtr ) {
-       tgtGridName = tgtSCPtr->grid().name();
-       tgtDistributionName = tgtSCPtr->distribution();
+    if ( tgtSC ) {
+       tgtGridName = tgtSC.grid().name();
+       tgtDistributionName = tgtSC.distribution();
     }
-    else if ( tgtCSPtr ) {
+    else if ( tgtCS ) {
        // POINT3 ... Note the CubedSphere function space does yet not have access to grid method.
-       // tgtGridName = tgtCSPtr->grid().name();
-       tgtGridName = "????????";
-       tgtDistributionName = tgtCSPtr->distribution();
+       // tgtGridName = tgtCSPtr->grid().name();   
+       tgtGridName = tgtCS.mesh().grid().name();
+       tgtDistributionName = tgtCS.distribution();
     }
 
     std::cout << tgtGridName << " " << tgtDistributionName << std::endl;

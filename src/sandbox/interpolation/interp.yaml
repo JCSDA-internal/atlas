@@ -12,4 +12,9 @@ field configurations:
     target grid name: "S24x12"
     target partitioner name: "checkerboard"
     source levels: 2
+  - source grid name: "F6"
+    source partitioner name: "trans"
+    target grid name: "CS-LFR-6"
+    target partitioner name: "cubedsphere"
+    source levels: 2
 

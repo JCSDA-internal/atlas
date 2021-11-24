@@ -25,6 +25,17 @@
 /**
 * Projection for LAM stretching
 *
+* The theory used in this code can be found under:
+* The benefits of the Met Office variable resolution NWP model for forecasting convection
+* Tang et al. 2013
+* https://doi.org/10.1002/met.1300
+*
+* Generally: From a original regular grid the point in the middle of the grid are unchanged,
+* based on the boundary of the new internal regular grid.
+* The grid length is then stretched at a constant stretching (or inflation) factor r,
+* that is Δsi+1 = rΔsi until all the points are mapped in the new grid.
+* The domain is then extended to a further uniform coarse resolution region (rim) in the outer domain,
+*
 * The origin of the xy-system is at (lon,lat) = (0,0)
 *
 */
@@ -34,7 +45,7 @@ namespace projection {
 namespace detail {
 
 
-// specification parameters
+///< specification parameters
 template <typename Rotation>
 typename StretchLAM<Rotation>::Spec StretchLAM<Rotation>::spec() const {
 
@@ -56,7 +67,7 @@ typename StretchLAM<Rotation>::Spec StretchLAM<Rotation>::spec() const {
     return proj_st;
 }
 
-// constructors
+///< constructors
 template <typename Rotation>
 StretchLAM<Rotation>::StretchLAM(const eckit::Parametrisation& proj_st) :
     ProjectionImpl(), rotation_( proj_st ) {
@@ -161,7 +172,7 @@ double StretchLAM<Rotation>::general_stretch(double& lamphi, const bool& L_long,
               * this work just for the part of the stretch not the rim
               */
 
-              // always the lowest integer
+             ///< always the lowest integer
              n_high = (delta_dist + epstest) / delta_high_;
 
              ///< only for the stretched part take out the rim part
@@ -208,7 +219,7 @@ double StretchLAM<Rotation>::general_stretch(double& lamphi, const bool& L_long,
                  point = point - deltacheck;
              }
 
-             // SECTION 3 last part of stretch adding the remaing non integer part with the same ratio as in the stretching
+             ///< SECTION 3 last part of stretch adding the remaing non integer part with the same ratio as in the stretching
              double delta_r = p_rem * pow(new_ratio, (n_high_st + 1));
              double delta_addr = delta_r - p_rem;
 
@@ -217,7 +228,7 @@ double StretchLAM<Rotation>::general_stretch(double& lamphi, const bool& L_long,
              } else {
                 point = point - delta_addr;
              }
-             // SECTION 4 rim area
+             ///< SECTION 4 rim area
              if (n_high > n_stretched_/2. ) {
                  double delta_l_h_ = 0;
                  for (int i = 0; i < n_high_rim; i+=1){
@@ -259,7 +270,7 @@ double StretchLAM<Rotation>::general_stretch(double& lamphi, const bool& L_long,
 
 }
 
-//xy unstretched, only unrotation
+///< xy unstretched, only unrotation
 template <typename Rotation>
 void StretchLAM<Rotation>::lonlat2xy( double crd[] ) const {
 
@@ -270,7 +281,7 @@ void StretchLAM<Rotation>::lonlat2xy( double crd[] ) const {
 
 }
 
-//From unstretched to stretched
+///< From unstretched to stretched
 template <typename Rotation>
 void StretchLAM<Rotation>::xy2lonlat( double crd[] ) const {
 

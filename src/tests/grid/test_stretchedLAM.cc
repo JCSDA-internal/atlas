@@ -18,6 +18,9 @@
 #include "atlas/projection.h"
 #include "atlas/projection/detail/StretchProjection.h"
 #include "tests/AtlasTestEnvironment.h"
+#include "atlas/output/Gmsh.h"
+#include "atlas/meshgenerator.h"
+#include "atlas/parallel/mpi/mpi.h"
 
 using namespace atlas::util;
 using namespace atlas::grid;
@@ -246,6 +249,34 @@ CASE( "LAMstretch" ) {
         }
     }
 
+    ///< Set meshes
+    auto meshGen_st = atlas::MeshGenerator( "structured" );
+    auto mesh_st    = meshGen_st.generate( grid_st );
+    auto meshGen_reg = atlas::MeshGenerator( "regular" );
+    auto mesh_reg    = meshGen_reg.generate( reg_grid );
+
+    ///< Set gmsh config.
+    ///< ghost is the haloe, in a general container
+    auto gmshConfig_reg = atlas::util::Config( "coordinates", "xy" ) | atlas::util::Config( "ghost", false );
+    gmshConfig_reg.set( "info", true );
+
+    auto gmshConfig_stretch = atlas::util::Config( "coordinates", "xy" ) | atlas::util::Config( "ghost", false );
+    gmshConfig_stretch.set( "info", true );
+
+    ///< Set source gmsh object.
+    const auto gmsh_reg     = atlas::output::Gmsh( "reg_mesh.msh", gmshConfig_reg );
+    const auto gmsh_stretch = atlas::output::Gmsh( "stretch_mesh.msh", gmshConfig_stretch );
+
+    /**
+     *  Write mesh in gmsh object.
+     *  output under:
+     *   <build-directory>/atlas/src/tests/grid/
+     */
+    gmsh_reg.write( mesh_reg );
+    gmsh_stretch.write( mesh_st );
+
+
+    ///< TEST of var_ratio = 1.0 configuration
 
     auto proj_reg = Projection( "stretch", Config( "delta_low", 1. ) | Config( "delta_hi", 0.6511482758621128 ) |
                                                  Config( "var_ratio", 1.0 ) | Config( "x_reg_start", 351.386944827586319 ) |

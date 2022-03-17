@@ -29,4 +29,4 @@ if( atlas_HAVE_FORTRAN )
 
 endif()
 
-ecbuild_find_python()
+ecbuild_find_python(VERSION 3)

@@ -8,6 +8,8 @@
  * nor does it submit to any jurisdiction.
  */
 
+#include <numeric>
+
 #include "atlas/mesh/BuildMeshFromConnectivities.h"
 #include "atlas/mesh/Mesh.h"
 #include "atlas/output/Gmsh.h"
@@ -25,24 +27,26 @@ CASE("test_tiny_mesh") {
     // small regional grid whose cell-centers are connected as:
     //
     //   0 - 4 ----- 5
-    //   |     \   / |  <-- cells 2,0,1 respectively
+    //   |     \   / |  <-- cells 3,1,2 respectively
     //   1 ----- 2 - 3
     //
     std::vector<double> lons{{0.0, 0.0, 10.0, 15.0, 5.0, 15.0}};
     std::vector<double> lats{{5.0, 0.0, 0.0, 0.0, 5.0, 5.0}};
 
     std::vector<int> ghosts(6, 0);  // all points owned
-    std::vector<int> global_indices({0, 1, 2, 3, 4, 5});
+    std::vector<int> global_indices(6);
+    std::iota(global_indices.begin(), global_indices.end(), 1);  // 1-based numbering
     std::vector<int> partitions(6, 0);  // all points on proc 0
 
     // triangles
     std::vector<atlas::TriangConnectivityData> tris = {{
-      {0, 0, {{2, 5, 4}}},  // cell 0
-      {1, 1, {{2, 3, 5}}}   // cell 1
+      // local cell index is 0-based; global cell index is 1-based
+      {0, 1, {{2, 5, 4}}},
+      {1, 2, {{2, 3, 5}}}
     }};
     // quads
     std::vector<atlas::QuadConnectivityData> quads = {{
-      {2, 2, {{0, 1, 2, 4}}}  // cell 2
+      {2, 3, {{0, 1, 2, 4}}}
     }};
 
     Mesh mesh = build_mesh_from_coordinates_and_connectivities(
@@ -58,7 +62,7 @@ CASE("test_tiny_mesh") {
     //Grid grid = mesh.grid();
     //std::cout << grid.spec() << std::endl;  // doesn't work yet because mesh.grid is not set
 
-    //Gmsh gmsh("fh_debug_out.msh", util::Config("coordinates", "xyz"));
+    //Gmsh gmsh("out.msh", util::Config("coordinates", "xyz"));
     //gmsh.write(mesh);
 }
 
@@ -81,45 +85,45 @@ CASE("test_cs_c2_mesh_serial") {
       59.6388, 59.6388, 59.6388, 59.6388,
       -59.6388, -59.6388, -59.6388, -59.6388}};
 
-    std::vector<int> ghosts(24, 0);  // all points owned
+    std::vector<int> ghosts(24, 0);
     std::vector<int> global_indices(24);
-    std::iota(global_indices.begin(), global_indices.end(), 0);
-    std::vector<int> partitions(24, 0);  // all points on proc 0
+    std::iota(global_indices.begin(), global_indices.end(), 1);
+    std::vector<int> partitions(24, 0);
 
     // triangles
     std::vector<atlas::TriangConnectivityData> tris = {{
       // corners
-      {0, 0, {{16, 13, 2}}},
-      {1, 1, {{17, 3, 6}}},
-      {2, 2, {{19, 7, 11}}},
-      {3, 3, {{18, 9, 15}}},
-      {4, 4, {{20, 0, 12}}},
-      {5, 5, {{22, 4, 1}}},
-      {6, 6, {{23, 10, 5}}},
-      {7, 7, {{21, 14, 8}}}
+      {0, 1, {{16, 13, 2}}},
+      {1, 2, {{17, 3, 6}}},
+      {2, 3, {{19, 7, 11}}},
+      {3, 4, {{18, 9, 15}}},
+      {4, 5, {{20, 0, 12}}},
+      {5, 6, {{22, 4, 1}}},
+      {6, 7, {{23, 10, 5}}},
+      {7, 8, {{21, 14, 8}}}
     }};
     // quads
     std::vector<atlas::QuadConnectivityData> quads = {{
       // faces
-      {8, 8, {{0, 1, 3, 2}}},
-      {9, 9, {{4, 5, 7, 6}}},
-      {10, 10, {{10, 8, 9, 11}}},
-      {11, 11, {{14, 12, 13, 15}}},
-      {12, 12, {{16, 17, 19, 18}}},
-      {13, 13, {{20, 21, 23, 22}}},
+      {8, 9, {{0, 1, 3, 2}}},
+      {9, 10, {{4, 5, 7, 6}}},
+      {10, 11, {{10, 8, 9, 11}}},
+      {11, 12, {{14, 12, 13, 15}}},
+      {12, 13, {{16, 17, 19, 18}}},
+      {13, 14, {{20, 21, 23, 22}}},
       // edges between faces
-      {14, 14, {{1, 4, 6, 3}}},
-      {15, 15, {{5, 10, 11, 7}}},
-      {16, 16, {{8, 14, 15, 9}}},
-      {17, 17, {{12, 0, 2, 13}}},
-      {18, 18, {{6, 7, 19, 17}}},
-      {19, 19, {{11, 9, 18, 19}}},
-      {20, 20, {{15, 13, 16, 18}}},
-      {21, 21, {{2, 3, 17, 16}}},
-      {22, 22, {{22, 23, 5, 4}}},
-      {23, 23, {{23, 21, 8, 10}}},
-      {24, 24, {{21, 20, 12, 14}}},
-      {25, 25, {{20, 22, 1, 0}}}
+      {14, 15, {{1, 4, 6, 3}}},
+      {15, 16, {{5, 10, 11, 7}}},
+      {16, 17, {{8, 14, 15, 9}}},
+      {17, 18, {{12, 0, 2, 13}}},
+      {18, 19, {{6, 7, 19, 17}}},
+      {19, 20, {{11, 9, 18, 19}}},
+      {20, 21, {{15, 13, 16, 18}}},
+      {21, 22, {{2, 3, 17, 16}}},
+      {22, 23, {{22, 23, 5, 4}}},
+      {23, 24, {{23, 21, 8, 10}}},
+      {24, 25, {{21, 20, 12, 14}}},
+      {25, 26, {{20, 22, 1, 0}}}
     }};
 
     Mesh mesh = build_mesh_from_coordinates_and_connectivities(
@@ -132,7 +136,7 @@ CASE("test_cs_c2_mesh_serial") {
         quads
         );
 
-    //Gmsh gmsh("fh_debug_out.msh", util::Config("coordinates", "xyz"));
+    //Gmsh gmsh("out.msh", util::Config("coordinates", "xyz"));
     //gmsh.write(mesh);
 }
 

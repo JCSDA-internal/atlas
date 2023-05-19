@@ -132,10 +132,10 @@ private:
 public:
     // -- Constructors
 
-    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible_v<ValueTp*,value_type*>>>
+    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible<ValueTp*,value_type*>::value>>
     ArrayView(const ArrayView<ValueTp, Rank>& other): data_(other.data()), size_(other.size()), shape_(other.shape_), strides_(other.strides_) {}
 
-    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible_v<ValueTp*,value_type*>>>
+    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible<ValueTp*,value_type*>::value>>
     ArrayView(ArrayView<ValueTp, Rank>&& other):data_(other.data()), size_(other.size()), shape_(other.shape_), strides_(other.strides_) {}
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS

@@ -102,10 +102,10 @@ public:
     // -- Constructors
 
 
-    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible_v<ValueTp*, Value*>>>
+    template <typename ValueTp, typename = std::enable_if_t<std::is_convertible<ValueTp*, Value*>::value>>
     LocalView(const LocalView<ValueTp,Rank>& other): data_(other.data_), size_(other.size_), shape_(other.shape_), strides_(other.strides_) {}
 
-    template <typename ValueTp, typename Int1, typename Int2, typename = std::enable_if_t<std::is_convertible_v<ValueTp*, Value*> && std::is_integral_v<Int1> && std::is_integral_v<Int2>>>
+    template <typename ValueTp, typename Int1, typename Int2, typename = std::enable_if_t<std::is_convertible<ValueTp*, Value*>::value && std::is_integral<Int1>::value && std::is_integral<Int2>::value>>
     LocalView(ValueTp* data, const Int1 shape[], const Int2 strides[]): data_(data) {
         size_ = 1;
         for (idx_t j = 0; j < Rank; ++j) {
@@ -115,7 +115,7 @@ public:
         }
     }
 
-    template <typename ValueTp, typename Int, typename = std::enable_if_t<std::is_convertible_v<ValueTp*, Value*> && std::is_integral_v<Int>>>
+    template <typename ValueTp, typename Int, typename = std::enable_if_t<std::is_convertible<ValueTp*, Value*>::value && std::is_integral<Int>::value>>
     LocalView(ValueTp* data, const Int shape[]): data_(data) {
         size_ = 1;
         for (int j = Rank - 1; j >= 0; --j) {
@@ -125,7 +125,7 @@ public:
         }
     }
 
-    template <typename ValueTp, typename ArrayShape, typename = std::enable_if_t<std::is_convertible_v<ValueTp*, Value*>>>
+    template <typename ValueTp, typename ArrayShape, typename = std::enable_if_t<std::is_convertible<ValueTp*, Value*>::value>>
     LocalView(ValueTp* data, const ArrayShape& shape) : LocalView(data,shape.data()) {}
 
     ENABLE_IF_CONST_WITH_NON_CONST(value_type)

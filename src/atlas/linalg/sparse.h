@@ -10,7 +10,11 @@
 #pragma once
 
 #include "sparse/Backend.h"
+#include "sparse/MakeEckitSparseMatrix.h"
+#include "sparse/SparseMatrixAdaptor.h"
+#include "sparse/SparseMatrixConvertor.h"
 #include "sparse/SparseMatrixMultiply.h"
+#include "sparse/SparseMatrixStorage.h"
 
 namespace atlas {
 namespace linalg {}  // namespace linalg

@@ -18,12 +18,11 @@
 
 #include "atlas/linalg/sparse/SparseMatrixStorage.h"
 #include "atlas/linalg/sparse/SparseMatrixView.h"
-#include "atlas/linalg/sparse/SparseMatrixConvertor.h"
-#include "atlas/linalg/sparse/SparseMatrixAdaptor.h"
+#include "atlas/linalg/sparse/MakeSparseMatrixStorageEigen.h"
+#include "atlas/linalg/sparse/MakeSparseMatrixStorageEckit.h"
 
 using atlas::linalg::SparseMatrixStorage;
-using atlas::linalg::SparseMatrixAdaptor;
-using atlas::linalg::SparseMatrixConvertor;
+using atlas::linalg::make_sparse_matrix_storage;
 using atlas::linalg::make_host_view;
 using atlas::linalg::make_device_view;
 
@@ -149,8 +148,8 @@ eckit::linalg::SparseMatrix create_eckit_sparsematrix() {
 }
 
 template <typename Value, typename Index = eckit::linalg::Index>
-SparseMatrixConvertor<Value,Index> create_sparsematrix_storage() {
-    return SparseMatrixConvertor<Value,Index>(create_eckit_sparsematrix());
+SparseMatrixStorage create_sparsematrix_storage() {
+    return make_sparse_matrix_storage<Value,Index>(create_eckit_sparsematrix());
 }
 
 template<typename Value>
@@ -240,33 +239,39 @@ void check_matrix(const SparseMatrixStorage& m) {
 }
 
 CASE("Create SparseMatrix moving eckit::linalg::SparseMatrix") {
-    SparseMatrixStorage S( create_eckit_sparsematrix() );
+    SparseMatrixStorage S = make_sparse_matrix_storage(create_eckit_sparsematrix());
+    EXPECT_NO_THROW(check_matrix(S));
+}
+
+CASE("Create SparseMatrix moving eckit::linalg::SparseMatrix using std::move") {
+    auto A = create_eckit_sparsematrix();
+    SparseMatrixStorage S = make_sparse_matrix_storage(std::move(A));
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Create SparseMatrix copying eckit::linalg::SparseMatrix") {
     auto A = create_eckit_sparsematrix();
-    SparseMatrixStorage S(A);
+    SparseMatrixStorage S = make_sparse_matrix_storage(A);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Create single precision SparseMatrix copying from double precision SparseMatrix ") {
     auto Sdouble = create_sparsematrix_storage<double>();
-    SparseMatrixConvertor<float> S(Sdouble);
+    SparseMatrixStorage S = make_sparse_matrix_storage<float>(Sdouble);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Create single precision SparseMatrix moving from double precision SparseMatrix which causes copy") {
-    SparseMatrixConvertor<float> S(create_sparsematrix_storage<double>());
+    SparseMatrixStorage S = make_sparse_matrix_storage<float>(create_sparsematrix_storage<double>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 CASE("Create double precision SparseMatrix copying from single precision SparseMatrix ") {
     auto Sfloat = create_sparsematrix_storage<float>();
-    SparseMatrixConvertor<double> S(Sfloat);
+    SparseMatrixStorage S = make_sparse_matrix_storage<double>(Sfloat);
     EXPECT_NO_THROW(check_matrix(S));
 }
 CASE("Create double precision SparseMatrix moving from single precision SparseMatrix which causes copy") {
-    SparseMatrixConvertor<double> S(create_sparsematrix_storage<float>());
+    SparseMatrixStorage S = make_sparse_matrix_storage<double>(create_sparsematrix_storage<float>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 CASE("Create base with copy constructor from double precision") {
@@ -289,71 +294,60 @@ CASE("Create base with move constructor from single precision") {
     EXPECT_NO_THROW(check_matrix(S));
 }
 
-CASE("Create SparseMatrix wrapping eckit::linalg::SparseMatrix, no move, no copy") {
-    auto A = create_eckit_sparsematrix();
-    SparseMatrixStorage S = SparseMatrixAdaptor( A );
-    EXPECT_NO_THROW(check_matrix(S));
-}
-
-
 #if ATLAS_HAVE_EIGEN
 CASE("Copy from Eigen double") {
     auto eigen_matrix = create_eigen_sparsematrix<double>();
-    SparseMatrixConvertor<double> S(eigen_matrix);
+    SparseMatrixStorage S = make_sparse_matrix_storage(eigen_matrix);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Move from Eigen double, avoiding copy") {
-    SparseMatrixConvertor<double> S(create_eigen_sparsematrix<double>());
+    SparseMatrixStorage S = make_sparse_matrix_storage(create_eigen_sparsematrix<double>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Copy and convert double from Eigen to single precision") {
     auto eigen_matrix = create_eigen_sparsematrix<double>();
-    SparseMatrixConvertor<float> S(eigen_matrix);
+    SparseMatrixStorage S = make_sparse_matrix_storage<float>(eigen_matrix);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Move and convert double from Eigen to single precision, should cause copy") {
-    SparseMatrixConvertor<float> S(create_eigen_sparsematrix<double>());
+    SparseMatrixStorage S = make_sparse_matrix_storage<float>(create_eigen_sparsematrix<double>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Copy from Eigen single") {
     auto eigen_matrix = create_eigen_sparsematrix<float>();
-    SparseMatrixConvertor<float> S(eigen_matrix);
+    SparseMatrixStorage S = make_sparse_matrix_storage(eigen_matrix);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Move from Eigen single, avoiding copy") {
-    SparseMatrixConvertor<float> S(create_eigen_sparsematrix<float>());
+    SparseMatrixStorage S = make_sparse_matrix_storage(create_eigen_sparsematrix<float>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Copy and convert single from Eigen to double precision") {
     auto eigen_matrix = create_eigen_sparsematrix<float>();
-    SparseMatrixConvertor<double> S(eigen_matrix);
+    SparseMatrixStorage S = make_sparse_matrix_storage<double>(eigen_matrix);
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Move and convert single from Eigen to double precision, should cause copy") {
-    SparseMatrixConvertor<double> S(create_eigen_sparsematrix<float>());
+    SparseMatrixStorage S = make_sparse_matrix_storage<double>(create_eigen_sparsematrix<float>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 
 CASE("Create chain of moves from eigen double") {
-    SparseMatrixStorage S( SparseMatrixConvertor<double>( create_eigen_sparsematrix<double>() ) );
+    SparseMatrixStorage S = make_sparse_matrix_storage<double>(create_eigen_sparsematrix<double>());
     EXPECT_NO_THROW(check_matrix(S));
 }
 CASE("Create chain of moves from eigen single") {
-    SparseMatrixStorage S( SparseMatrixConvertor<float>( create_eigen_sparsematrix<float>() ) );
+    SparseMatrixStorage S = make_sparse_matrix_storage<float>(create_eigen_sparsematrix<float>());
     EXPECT_NO_THROW(check_matrix(S));
 }
-CASE("Create SparseMatrix wrapping Eigen matrix") {
-    auto A = create_eigen_sparsematrix<float>();
-    SparseMatrixStorage S = SparseMatrixAdaptor( A );
-    EXPECT_NO_THROW(check_matrix(S));
-}
+
 #endif
 
 CASE("Test exceptions in make_host_view") {

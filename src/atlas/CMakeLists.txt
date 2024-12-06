@@ -706,6 +706,8 @@ linalg/sparse.h
 linalg/sparse/Backend.h
 linalg/sparse/Backend.cc
 linalg/sparse/MakeEckitSparseMatrix.h
+linalg/sparse/MakeSparseMatrixStorageEckit.h
+linalg/sparse/MakeSparseMatrixStorageEigen.h
 linalg/sparse/SparseMatrixMultiply.h
 linalg/sparse/SparseMatrixMultiply.tcc
 linalg/sparse/SparseMatrixMultiply_EckitLinalg.h
@@ -714,8 +716,7 @@ linalg/sparse/SparseMatrixMultiply_OpenMP.h
 linalg/sparse/SparseMatrixMultiply_OpenMP.cc
 linalg/sparse/SparseMatrixStorage.cc
 linalg/sparse/SparseMatrixStorage.h
-linalg/sparse/SparseMatrixConvertor.h
-linalg/sparse/SparseMatrixAdaptor.h
+linalg/sparse/SparseMatrixView.h
 linalg/dense.h
 linalg/dense/Backend.h
 linalg/dense/Backend.cc

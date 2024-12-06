@@ -13,11 +13,8 @@
 #include <algorithm>
 #include <any>
 #include <memory>
+#include <utility>
 
-#include "atlas/library/defines.h"
-#if ATLAS_HAVE_EIGEN
-#include <Eigen/Sparse>
-#endif
 #include "eckit/linalg/SparseMatrix.h"
 
 #include "atlas/array.h"
@@ -39,31 +36,31 @@ namespace linalg {
 ///
 /// To construct it, taking ownership of a constructed Eigen::SparseMatrix
 ///
-///     SparseMatrixStorage s {std::move(eigen_matrix)};
+///     SparseMatrixStorage s = make_sparse_matrix_storage(std::move(eigen_matrix));
 ///
 /// To construct it, taking a copy of a constructed Eigen::SparseMatrix
 ///
-///     SparseMatrixStorage s {eigen_matrix};
+///     SparseMatrixStorage s = make_sparse_matrix_storage(eigen_matrix);
 ///
 /// To construct it, taking ownership of a constructed eckit::linalg::SparseMatrix, avoiding copies if data types match
 ///
-///     SparseMatrixStorage s {std::move(eckit_matrix)};
+///     SparseMatrixStorage s = make_sparse_matrix_storage(std::move(eckit_matrix));
 ///
 ///
 /// To construct it, taking a copy of a constructed eckit::linalg::SparseMatrix (no std::move)
 ///
-///     SparseMatrixStorage s {eckit_matrix};
+///     SparseMatrixStorage s = make_sparse_matrix_storage(eckit_matrix);
 ///
 ///
 /// It is also possible to initialise empty and move into it at later stage:
 ///
 ///     SparseMatrixStorage s;
-///     s = SparseMatrixStorage{eckit_matrix};
+///     s = make_sparse_matrix_storage(eckit_matrix);
 ///
 ///
 /// To construct it, taking a single precision copy of a constructed eckit::linalg::SparseMatrix
 ///
-///     SparseMatrixStorage s {SparseMatrixConvertor<float>{eckit_matrix}};
+///     s = make_sparse_matrix_storage<float>(eckit_matrix);
 ///
 
 class SparseMatrixStorage {
@@ -84,20 +81,6 @@ public:
     /// Copy from a SparseMatrixView
     template<typename Value, typename Index>
     SparseMatrixStorage(const SparseMatrixView<Value,Index>& host_view);
-
-    /// Move constructor from eckit::linalg::SparseMatrix, takes ownership!
-    explicit SparseMatrixStorage(eckit::linalg::SparseMatrix&& eckit_matrix);
-
-    /// Copy constructor from eckit::linalg::SparseMatrix, makes copy!
-    explicit SparseMatrixStorage(const eckit::linalg::SparseMatrix& eckit_matrix);
-
-    /// Move constructor from Eigen::SparseMatrix, takes ownership!
-    template<typename Value, typename Index>
-    explicit SparseMatrixStorage(Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>&& eigen_matrix);
-
-    /// Copy constructor from Eigen::SparseMatrix, makes copy!
-    template<typename Value, typename Index>
-    explicit SparseMatrixStorage(const Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>& eigen_matrix);
 
     /// Move assign from other SparseMatrixStorage, takes ownership!
     SparseMatrixStorage& operator=(SparseMatrixStorage&& other);
@@ -135,6 +118,47 @@ public:
     void allocateDevice() const;
 
     void deallocateDevice() const;
+
+    static SparseMatrixStorage make(
+        std::size_t rows,
+        std::size_t cols,
+        std::size_t nnz,
+        std::unique_ptr<atlas::array::Array>&& value,
+        std::unique_ptr<atlas::array::Array>&& inner,
+        std::unique_ptr<atlas::array::Array>&& outer,
+        std::any&& storage) {
+            SparseMatrixStorage S;
+            S.rows_    = rows;
+            S.cols_    = cols;
+            S.nnz_     = nnz;
+            S.outer_   = std::move(outer);
+            S.inner_   = std::move(inner);
+            S.value_   = std::move(value);
+            S.storage_ = std::move(storage);
+            return S;
+    }
+
+    void swap(SparseMatrixStorage& other) {
+        std::swap(other.rows_,    rows_);
+        std::swap(other.cols_,    cols_);
+        std::swap(other.nnz_,     nnz_);
+        std::swap(other.value_,   value_);
+        std::swap(other.inner_,   inner_);
+        std::swap(other.outer_,   outer_);
+        std::swap(other.storage_, storage_);
+    }
+
+    bool contains(DataType value_type, DataType index_type) {
+        if (empty()) {
+            return false;
+        }
+        return value_->datatype() == value_type && outer_->datatype() == index_type;
+    }
+
+    template <typename value_type, typename index_type>
+    bool contains() {
+        return contains(make_datatype<value_type>(), make_datatype<index_type>());
+    }
     
 protected:
     std::size_t nnz_{0};
@@ -175,40 +199,80 @@ SparseMatrixStorage::SparseMatrixStorage(const SparseMatrixView<Value,Index>& ho
 
 //----------------------------------------------------------------------------------------------------------------------
 
-#if ATLAS_HAVE_EIGEN
-template <typename Value, typename Index>
-SparseMatrixStorage::SparseMatrixStorage(Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>&& m) {
-    nnz_   = m.nonZeros();
-    rows_  = m.rows();
-    cols_  = m.cols();
-
-    outer_.reset(atlas::array::Array::wrap(const_cast<Index*>(m.outerIndexPtr()), atlas::array::make_shape(rows_+1)));
-    inner_.reset(atlas::array::Array::wrap(const_cast<Index*>(m.innerIndexPtr()), atlas::array::make_shape(nnz_)));
-    value_.reset(atlas::array::Array::wrap(const_cast<Value*>(m.valuePtr()),      atlas::array::make_shape(nnz_)));
-
-    // We now move the eckit::linalg::SparseMatrix into a generic storage so
-    //   the wrapped array data does not go out of scope
-    //   Note: Eigen move constructor only available since 3.5; use swap instead.
-    using EigenMatrix = Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>;
-    auto m_ptr = std::make_shared<EigenMatrix>();
-    m_ptr->swap(m);
-    storage_ = std::make_any<std::shared_ptr<EigenMatrix>>(std::move(m_ptr));
+namespace {
+template<typename OutputT, typename InputT>
+void host_copy(const InputT* input_data, array::Array& output) {
+    auto size = output.size();
+    OutputT* output_data = output.host_data<OutputT>();
+    std::copy( input_data, input_data + size, output_data );
 }
 
-template <typename Value, typename Index>
-SparseMatrixStorage::SparseMatrixStorage(const Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>& m) {
-    nnz_   = m.nonZeros();
-    rows_  = m.rows();
-    cols_  = m.cols();
-
-    outer_.reset(atlas::array::Array::create<Index>(rows_+1));
-    inner_.reset(atlas::array::Array::create<Index>(nnz_));
-    value_.reset(atlas::array::Array::create<Value>(nnz_));
-    host_copy(m.outerIndexPtr(), *outer_);
-    host_copy(m.innerIndexPtr(), *inner_);
-    host_copy(m.valuePtr(),      *value_);
+template<typename InputT, typename OutputT>
+void host_copy(const array::Array& input, array::Array& output) {
+    host_copy<OutputT>( input.host_data<InputT>(), output );
 }
-#endif
+
+template<typename OutputT>
+void host_copy(const array::Array& input, array::Array& output) {
+    switch(input.datatype().kind()) {
+        case DataType::kind<int>():           return host_copy<int,OutputT>( input, output );
+        case DataType::kind<long>():          return host_copy<long,OutputT>( input, output );
+        case DataType::kind<float>():         return host_copy<float,OutputT>( input, output );
+        case DataType::kind<double>():        return host_copy<double,OutputT>( input, output );
+        case DataType::kind<unsigned int>():  return host_copy<unsigned int,OutputT>( input, output );
+        case DataType::kind<unsigned long>(): return host_copy<unsigned long,OutputT>( input, output );
+        default:  ATLAS_NOTIMPLEMENTED;
+    }
+}
+void host_copy(const array::Array& input, array::Array& output) {
+    switch(output.datatype().kind()) {
+        case DataType::kind<int>():           return host_copy<int>( input, output );
+        case DataType::kind<long>():          return host_copy<long>( input, output );
+        case DataType::kind<float>():         return host_copy<float>( input, output );
+        case DataType::kind<double>():        return host_copy<double>( input, output );
+        case DataType::kind<unsigned int>():  return host_copy<unsigned int>( input, output );
+        case DataType::kind<unsigned long>(): return host_copy<unsigned long>( input, output );
+        default:  ATLAS_NOTIMPLEMENTED;
+    }
+}
+
+}
+
+template<typename value_type, typename index_type = eckit::linalg::Index>
+SparseMatrixStorage make_sparse_matrix_storage(const SparseMatrixStorage& other) {
+    auto rows  = other.rows();
+    auto cols  = other.cols();
+    auto nnz   = other.nnz();
+    std::unique_ptr<array::Array> value(array::Array::create<value_type>(nnz));
+    std::unique_ptr<array::Array> inner(array::Array::create<index_type>(nnz));
+    std::unique_ptr<array::Array> outer(array::Array::create<index_type>(rows+1));
+    host_copy<value_type>(other.value(), *value);
+    host_copy<index_type>(other.inner(), *inner);
+    host_copy<index_type>(other.outer(), *outer);
+    return SparseMatrixStorage::make(rows,cols,nnz,std::move(value), std::move(inner), std::move(outer), std::any());
+}
+
+template<typename value_type, typename index_type = eckit::linalg::Index>
+SparseMatrixStorage make_sparse_matrix_storage(SparseMatrixStorage&& other) {
+    SparseMatrixStorage S;
+
+    if (other.contains<value_type,index_type>()) {
+        S = std::move(other);
+    }
+    else {
+        auto rows  = other.rows();
+        auto cols  = other.cols();
+        auto nnz   = other.nnz();
+        std::unique_ptr<array::Array> value(array::Array::create<value_type>(nnz));
+        std::unique_ptr<array::Array> inner(array::Array::create<index_type>(nnz));
+        std::unique_ptr<array::Array> outer(array::Array::create<index_type>(rows+1));
+        host_copy<value_type>(other.value(), *value);
+        host_copy<index_type>(other.inner(), *inner);
+        host_copy<index_type>(other.outer(), *outer);
+        S = SparseMatrixStorage::make(rows,cols,nnz,std::move(value), std::move(inner), std::move(outer), std::any());
+    }
+    return S;
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 

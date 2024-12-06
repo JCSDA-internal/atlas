@@ -21,6 +21,7 @@
 #include "atlas/util/Object.h"
 #include "eckit/config/Configuration.h"
 #include "eckit/linalg/SparseMatrix.h"
+#include "atlas/linalg/sparse/MakeSparseMatrixStorageEckit.h"
 
 namespace atlas {
 class Field;
@@ -122,7 +123,7 @@ protected:
     }
 
     void setMatrix(eckit::linalg::SparseMatrix&& m, const std::string& uid = "") {
-        setMatrix( Matrix(std::move(m)), uid );
+        setMatrix( linalg::make_sparse_matrix_storage(std::move(m)), uid );
     }
 
     void setMatrix(std::size_t rows, std::size_t cols, const Triplets& triplets, const std::string& uid = "") {

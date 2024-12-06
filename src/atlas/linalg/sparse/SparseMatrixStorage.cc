@@ -40,32 +40,6 @@ SparseMatrixStorage::SparseMatrixStorage(const SparseMatrixStorage& other) {
     value_->copy(*other.value_);
 }
 
-SparseMatrixStorage::SparseMatrixStorage(eckit::linalg::SparseMatrix&& m) {
-    nnz_   = m.nonZeros();
-    rows_  = m.rows();
-    cols_  = m.cols();
-    outer_.reset(atlas::array::Array::wrap(const_cast<eckit::linalg::Index*>(m.outer()), atlas::array::make_shape(rows_+1)));
-    inner_.reset(atlas::array::Array::wrap(const_cast<eckit::linalg::Index*>(m.inner()), atlas::array::make_shape(nnz_)));
-    value_.reset(atlas::array::Array::wrap(const_cast<eckit::linalg::Scalar*>(m.data()), atlas::array::make_shape(nnz_)));
-
-    // We now move the eckit::linalg::SparseMatrix into a generic storage so
-    //   the wrapped array data does not go out of scope
-    storage_ = std::make_any<eckit::linalg::SparseMatrix>(std::move(m));
-}
-
-/// Create copy of eckit::linalg::SparseMatrix
-SparseMatrixStorage::SparseMatrixStorage(const eckit::linalg::SparseMatrix& other) {
-    nnz_   = other.nonZeros();
-    rows_  = other.rows();
-    cols_  = other.cols();
-    outer_.reset(atlas::array::Array::create<eckit::linalg::Index>(rows_+1));
-    inner_.reset(atlas::array::Array::create<eckit::linalg::Index>(nnz_));
-    value_.reset(atlas::array::Array::create<eckit::linalg::Scalar>(nnz_));
-    host_copy(other.outer(), *outer_);
-    host_copy(other.inner(), *inner_);
-    host_copy(other.data(),  *value_);
-}
-
 SparseMatrixStorage& SparseMatrixStorage::operator=(SparseMatrixStorage&& other) {
     nnz_     = other.nnz_;
     rows_    = other.rows_;

@@ -114,7 +114,7 @@ CASE("extract cache, copy it, and move it for use") {
     EXPECT(not eckit_matrix_view.empty());
     EXPECT(not eckit_matrix_copy.empty());
 
-    auto cache = interpolation::MatrixCache(atlas::linalg::SparseMatrixStorage(std::move(eckit_matrix_copy)));
+    auto cache = interpolation::MatrixCache(atlas::linalg::make_sparse_matrix_storage(std::move(eckit_matrix_copy)));
 
     EXPECT(not eckit_matrix_view.empty()); // We didn't touch the view
     EXPECT(eckit_matrix_copy.empty());     // This has been moved into the new 'cache'

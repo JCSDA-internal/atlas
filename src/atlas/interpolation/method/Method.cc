@@ -270,7 +270,7 @@ void Method::setup(const FunctionSpace& source, const FunctionSpace& target) {
         if (not matrix_->empty()) {
             eckit::linalg::SparseMatrix matrix_copy = make_eckit_sparse_matrix(*matrix_); // Makes a copy!
             matrix_copy.transpose(); // transpose the copy in place
-            matrix_transpose_ = atlas::linalg::SparseMatrixStorage(std::move(matrix_copy)); // Move the copy into storage
+            matrix_transpose_ = linalg::make_sparse_matrix_storage(std::move(matrix_copy)); // Move the copy into storage
         }
     }
 }

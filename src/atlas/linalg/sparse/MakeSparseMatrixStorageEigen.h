@@ -17,7 +17,11 @@
 
 #include "atlas/library/defines.h"
 #if ATLAS_HAVE_EIGEN
+ATLAS_SUPPRESS_WARNINGS_PUSH
+ATLAS_SUPPRESS_WARNINGS_INTEGER_SIGN_CHANGE
+ATLAS_SUPPRESS_WARNINGS_CODE_IS_UNREACHABLE
 #include <Eigen/Sparse>
+ATLAS_SUPPRESS_WARNINGS_POP
 #endif
 
 #include "atlas/array.h"
@@ -39,7 +43,6 @@ void host_copy_eigen (const InputT* input_data, atlas::array::Array& output) {
 
 template <typename Value, typename Index>
 SparseMatrixStorage make_sparse_matrix_storage(Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>&& m) {
-    std::cout << "make_sparse_matrix_storage move" << std::endl;
 
     std::size_t rows = m.rows();
     std::size_t cols = m.cols();
@@ -64,7 +67,6 @@ SparseMatrixStorage make_sparse_matrix_storage(Eigen::SparseMatrix<Value, Eigen:
 template< typename value_type, typename index_type = eckit::linalg::Index, typename Value, typename Index,
           typename = std::enable_if_t < !std::is_same_v<value_type,Value>>>
 SparseMatrixStorage make_sparse_matrix_storage(Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>&& m) {
-    std::cout << "make_sparse_matrix_storage move or convert" << std::endl;
 
     if (std::is_same_v<Value, value_type> && std::is_same_v<Index, index_type>) {
         return make_sparse_matrix_storage(std::move(m));
@@ -91,7 +93,6 @@ SparseMatrixStorage make_sparse_matrix_storage(Eigen::SparseMatrix<Value, Eigen:
 
 template <typename Value, typename Index>
 SparseMatrixStorage make_sparse_matrix_storage(const Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>& m) {
-    std::cout << "make_sparse_matrix_storage copy" << std::endl;
     std::size_t rows = m.rows();
     std::size_t cols = m.cols();
     std::size_t nnz  = m.nonZeros();
@@ -114,7 +115,6 @@ SparseMatrixStorage make_sparse_matrix_storage(const Eigen::SparseMatrix<Value, 
 template< typename value_type, typename index_type = eckit::linalg::Index, typename Value, typename Index,
           typename = std::enable_if_t < !std::is_same_v<value_type,Value>>>
 SparseMatrixStorage make_sparse_matrix_storage(const Eigen::SparseMatrix<Value, Eigen::RowMajor, Index>& m) {
-    std::cout << "make_sparse_matrix_storage copy and convert" << std::endl;
 
     std::size_t rows = m.rows();
     std::size_t cols = m.cols();

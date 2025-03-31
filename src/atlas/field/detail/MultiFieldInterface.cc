@@ -33,16 +33,15 @@ MultiFieldImpl* atlas__MultiField__create_shape(int kind, int rank, int shapef[]
         size_t length, size_t size) {
     array::ArrayShape shape;
     shape.resize(rank);
-    array::ArrayStrides strides;
     for (idx_t j = 0, jf = rank - 1; j < rank; ++j) {
         shape[j]   = shapef[jf--];
     }
 
     std::vector<std::string> var_names_str;
     for (size_t jj = 0; jj < size; ++jj) {
-        char str[length + 1];
-        ATLAS_ASSERT(snprintf(str, sizeof(str), "%s", var_names + jj * length ) >= 0);
-        std::string sstr(str);
+        std::unique_ptr<char[]> str(new char[length + 1]);
+        ATLAS_ASSERT(snprintf(str.get(), length, "%s", var_names + jj * length ) >= 0);
+        std::string sstr(str.get());
         sstr.erase(std::find_if(sstr.rbegin(), sstr.rend(), [](unsigned char ch) {
            return !std::isspace(ch);
         }).base(), sstr.end());

@@ -29,6 +29,11 @@ void RegionalLinear2D::do_setup(const Grid& source, const Grid& target,
   ATLAS_NOTIMPLEMENTED;
 }
 
+void RegionalLinear2D::do_setup(const FunctionSpace& source, const FunctionSpace& target,
+                                const Cache&) {
+  ATLAS_NOTIMPLEMENTED;
+}
+
 void RegionalLinear2D::do_setup(const FunctionSpace& source,
                                 const FunctionSpace& target) {
   ATLAS_TRACE("interpolation::method::RegionalLinear2D::do_setup");
@@ -62,8 +67,8 @@ void RegionalLinear2D::do_setup(const FunctionSpace& source,
   // Source grid indices
   const Field sourceFieldIndexI = sourceFs.index_i();
   const Field sourceFieldIndexJ = sourceFs.index_j();
-  const auto sourceIndexIView = array::make_view<int, 1>(sourceFieldIndexI);
-  const auto sourceIndexJView = array::make_view<int, 1>(sourceFieldIndexJ);
+  const auto sourceIndexIView = array::make_view<idx_t, 1>(sourceFieldIndexI);
+  const auto sourceIndexJView = array::make_view<idx_t, 1>(sourceFieldIndexJ);
   sourceSize_ = sourceFs.size();
 
   // Destination grid size

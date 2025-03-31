@@ -186,9 +186,9 @@ private:
 
 template<typename Value, typename Index>
 SparseMatrixStorage::SparseMatrixStorage(const SparseMatrixView<Value,Index>& host_view) {
-    nnz_   = host_view.nnz_;
-    rows_  = host_view.rows_;
-    cols_  = host_view.cols_;
+    nnz_   = host_view.nnz();
+    rows_  = host_view.rows();
+    cols_  = host_view.cols();
     outer_.reset(atlas::array::Array::create<Index>(host_view.outer_size()));
     inner_.reset(atlas::array::Array::create<Index>(host_view.inner_size()));
     value_.reset(atlas::array::Array::create<Value>(host_view.value_size()));
@@ -199,43 +199,8 @@ SparseMatrixStorage::SparseMatrixStorage(const SparseMatrixView<Value,Index>& ho
 
 //----------------------------------------------------------------------------------------------------------------------
 
-namespace {
-template<typename OutputT, typename InputT>
-void host_copy(const InputT* input_data, array::Array& output) {
-    auto size = output.size();
-    OutputT* output_data = output.host_data<OutputT>();
-    std::copy( input_data, input_data + size, output_data );
-}
-
-template<typename InputT, typename OutputT>
-void host_copy(const array::Array& input, array::Array& output) {
-    host_copy<OutputT>( input.host_data<InputT>(), output );
-}
-
-template<typename OutputT>
-void host_copy(const array::Array& input, array::Array& output) {
-    switch(input.datatype().kind()) {
-        case DataType::kind<int>():           return host_copy<int,OutputT>( input, output );
-        case DataType::kind<long>():          return host_copy<long,OutputT>( input, output );
-        case DataType::kind<float>():         return host_copy<float,OutputT>( input, output );
-        case DataType::kind<double>():        return host_copy<double,OutputT>( input, output );
-        case DataType::kind<unsigned int>():  return host_copy<unsigned int,OutputT>( input, output );
-        case DataType::kind<unsigned long>(): return host_copy<unsigned long,OutputT>( input, output );
-        default:  ATLAS_NOTIMPLEMENTED;
-    }
-}
-void host_copy(const array::Array& input, array::Array& output) {
-    switch(output.datatype().kind()) {
-        case DataType::kind<int>():           return host_copy<int>( input, output );
-        case DataType::kind<long>():          return host_copy<long>( input, output );
-        case DataType::kind<float>():         return host_copy<float>( input, output );
-        case DataType::kind<double>():        return host_copy<double>( input, output );
-        case DataType::kind<unsigned int>():  return host_copy<unsigned int>( input, output );
-        case DataType::kind<unsigned long>(): return host_copy<unsigned long>( input, output );
-        default:  ATLAS_NOTIMPLEMENTED;
-    }
-}
-
+namespace detail {
+    void host_copy(const array::Array& input, array::Array& output);
 }
 
 template<typename value_type, typename index_type = eckit::linalg::Index>
@@ -246,9 +211,9 @@ SparseMatrixStorage make_sparse_matrix_storage(const SparseMatrixStorage& other)
     std::unique_ptr<array::Array> value(array::Array::create<value_type>(nnz));
     std::unique_ptr<array::Array> inner(array::Array::create<index_type>(nnz));
     std::unique_ptr<array::Array> outer(array::Array::create<index_type>(rows+1));
-    host_copy<value_type>(other.value(), *value);
-    host_copy<index_type>(other.inner(), *inner);
-    host_copy<index_type>(other.outer(), *outer);
+    detail::host_copy(other.value(), *value);
+    detail::host_copy(other.inner(), *inner);
+    detail::host_copy(other.outer(), *outer);
     return SparseMatrixStorage::make(rows,cols,nnz,std::move(value), std::move(inner), std::move(outer), std::any());
 }
 
@@ -266,9 +231,9 @@ SparseMatrixStorage make_sparse_matrix_storage(SparseMatrixStorage&& other) {
         std::unique_ptr<array::Array> value(array::Array::create<value_type>(nnz));
         std::unique_ptr<array::Array> inner(array::Array::create<index_type>(nnz));
         std::unique_ptr<array::Array> outer(array::Array::create<index_type>(rows+1));
-        host_copy<value_type>(other.value(), *value);
-        host_copy<index_type>(other.inner(), *inner);
-        host_copy<index_type>(other.outer(), *outer);
+        detail::host_copy(other.value(), *value);
+        detail::host_copy(other.inner(), *inner);
+        detail::host_copy(other.outer(), *outer);
         S = SparseMatrixStorage::make(rows,cols,nnz,std::move(value), std::move(inner), std::move(outer), std::any());
     }
     return S;
@@ -278,6 +243,9 @@ SparseMatrixStorage make_sparse_matrix_storage(SparseMatrixStorage&& other) {
 
 template<typename Value, typename Index = eckit::linalg::Index>
 inline SparseMatrixView<Value,Index> make_host_view(const SparseMatrixStorage& m) {
+    if(m.rows() == 0 && m.cols() == 0) {
+        return SparseMatrixView<Value,Index>();
+    }
     if( m.value().datatype().kind() != DataType::kind<Value>() || m.outer().datatype().kind() != DataType::kind<Index>() ) {
         ATLAS_THROW_EXCEPTION("Cannot make_host_view<" + DataType::str<Value>() + "," << DataType::str<Index>() +
             ">(const SparseMatrixStorage&) from SparseMatrixStorage containing values of type <" + m.value().datatype().str() + "> and indices of type <" + m.outer().datatype().str() +">" );
@@ -296,6 +264,9 @@ inline SparseMatrixView<Value,Index> make_host_view(const SparseMatrixStorage& m
 
 template<typename Value, typename Index = eckit::linalg::Index>
 inline SparseMatrixView<Value,Index> make_device_view(const SparseMatrixStorage& m) {
+    if(m.rows() == 0 && m.cols() == 0) {
+        return SparseMatrixView<Value,Index>();
+    }
     if( m.value().datatype().kind() != DataType::kind<Value>() || m.outer().datatype().kind() != DataType::kind<Index>() ) {
         ATLAS_THROW_EXCEPTION("Cannot make_device_view<" + DataType::str<Value>() + "," << DataType::str<Index>() +
             ">(const SparseMatrixStorage&) from SparseMatrixStorage containing values of type <" + m.value().datatype().str() + "> and indices of type <" + m.outer().datatype().str() +">" );

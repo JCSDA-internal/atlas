@@ -138,13 +138,14 @@ public:
     using Method::do_setup;
     void do_setup(const FunctionSpace& src_fs, const FunctionSpace& tgt_fs) override;
     void do_setup(const Grid& src_grid, const Grid& tgt_grid, const interpolation::Cache&) override;
+    void do_setup(const FunctionSpace& source, const FunctionSpace& target, const interpolation::Cache&) override;
     void do_execute(const Field& src_field, Field& tgt_field, Metadata&) const override;
     void do_execute(const FieldSet& src_fields, FieldSet& tgt_fields, Metadata&) const override;
 
     void print(std::ostream& out) const override;
 
-    const FunctionSpace& source() const override { return data_->src_fs_; }
-    const FunctionSpace& target() const override { return data_->tgt_fs_; }
+    const FunctionSpace& source() const override { return src_fs_; }
+    const FunctionSpace& target() const override { return tgt_fs_; }
 
     inline const PointXYZ& src_points(size_t id) const { return data_->src_points_[id]; }
     inline const PointXYZ& tgt_points(size_t id) const { return data_->tgt_points_[id]; }
@@ -169,7 +170,10 @@ private:
     std::vector<idx_t> sort_cell_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> sort_node_edges(Mesh& mesh, idx_t cell_id) const;
     std::vector<idx_t> get_cell_neighbours(Mesh&, idx_t jcell) const;
-    std::vector<idx_t> get_node_neighbours(Mesh&, idx_t jcell) const;
+
+    struct Workspace;
+
+    std::vector<idx_t> get_node_neighbours(Mesh&, idx_t jcell, Workspace&) const;
     CSPolygonArray get_polygons_celldata(FunctionSpace) const;
     CSPolygonArray get_polygons_nodedata(FunctionSpace, std::vector<idx_t>& csp2node,
                                          std::vector<std::vector<idx_t>>& node2csp,

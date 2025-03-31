@@ -74,7 +74,7 @@ struct SparseMatrixMultiplyHelper {
     static void multiply( const eckit::linalg::SparseMatrix& W, const SourceView& src, TargetView& tgt,
                           const eckit::Configuration& config ) {
         using MatrixValue = double;
-        using MatrixIndex = int;
+        // using MatrixIndex = int;
         using SourceValue = const typename std::remove_const<typename SourceView::value_type>::type;
         using TargetValue = typename std::remove_const<typename TargetView::value_type>::type;
         constexpr int src_rank = introspection::rank<SourceView>();
@@ -87,7 +87,7 @@ struct SparseMatrixMultiplyHelper {
     static void multiply_add( const eckit::linalg::SparseMatrix& W, const SourceView& src, TargetView& tgt,
                               const eckit::Configuration& config ) {
         using MatrixValue = double;
-        using MatrixIndex = int;
+        // using MatrixIndex = int;
         using SourceValue = const typename std::remove_const<typename SourceView::value_type>::type;
         using TargetValue = typename std::remove_const<typename TargetView::value_type>::type;
         constexpr int src_rank = introspection::rank<SourceView>();
@@ -164,6 +164,9 @@ void sparse_matrix_multiply( const Matrix& matrix, const SourceView& src, Target
 #endif
         sparse::dispatch_sparse_matrix_multiply<sparse::backend::eckit_linalg>( matrix, src, tgt, indexing, util::Config("backend",type)  );
     }
+    else if ( type == sparse::backend::hicsparse::type() ) {
+        sparse::dispatch_sparse_matrix_multiply<sparse::backend::hicsparse>( matrix, src, tgt, indexing, config  );
+    }
     else {
         throw_NotImplemented( "sparse_matrix_multiply cannot be performed with unsupported backend [" + type + "]",
                               Here() );
@@ -201,6 +204,9 @@ void sparse_matrix_multiply_add( const Matrix& matrix, const SourceView& src, Ta
     else if( eckit::linalg::LinearAlgebra::hasBackend(type) ) {
 #endif
         sparse::dispatch_sparse_matrix_multiply_add<sparse::backend::eckit_linalg>( matrix, src, tgt, indexing, util::Config("backend",type)  );
+    }
+    else if ( type == sparse::backend::hicsparse::type() ) {
+        sparse::dispatch_sparse_matrix_multiply_add<sparse::backend::hicsparse>( matrix, src, tgt, indexing, config  );
     }
     else {
         throw_NotImplemented( "sparse_matrix_multiply_add cannot be performed with unsupported backend [" + type + "]",

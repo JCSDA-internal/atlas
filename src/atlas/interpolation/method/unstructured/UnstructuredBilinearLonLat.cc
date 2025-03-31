@@ -80,6 +80,20 @@ void UnstructuredBilinearLonLat::do_setup(const Grid& source, const Grid& target
     do_setup(make_nodecolumns(source), functionspace::PointCloud{target});
 }
 
+void UnstructuredBilinearLonLat::do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache& cache) {
+    allow_halo_exchange_ = false;
+    //  no halo_exchange because we don't have any halo with delaunay or 3d structured meshgenerator
+    if (interpolation::MatrixCache(cache)) {
+        setMatrix(cache);
+        source_ = source;
+        target_ = target;
+        ATLAS_ASSERT(matrix().rows() == target.size());
+        ATLAS_ASSERT(matrix().cols() == source.size());
+        return;
+    }
+    do_setup(source, target);
+}
+
 void UnstructuredBilinearLonLat::do_setup(const FunctionSpace& source, const FunctionSpace& target) {
     ATLAS_TRACE("atlas::interpolation::method::BilinearRemapping::do_setup()");
 
@@ -235,16 +249,12 @@ void UnstructuredBilinearLonLat::setup(const FunctionSpace& source) {
 
     array::ArrayView<int, 1> out_ghosts = array::make_view<int, 1>(target_ghost_);
 
-    idx_t Nelements = meshSource.cells().size();
-
     // weights -- one per vertex of element, triangles (3) or quads (4)
 
     Triplets weights_triplets;               // structure to fill-in sparse matrix
     weights_triplets.reserve(out_npts * 4);  // preallocate space as if all elements where quads
 
     // search nearest k cell centres
-
-    const idx_t maxNbElemsToTry = std::max<idx_t>(8, idx_t(Nelements * max_fraction_elems_to_try_));
 
     std::vector<idx_t> failures;
 

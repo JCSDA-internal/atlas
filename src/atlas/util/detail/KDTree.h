@@ -13,6 +13,8 @@
 #include <iosfwd>
 #include <memory>
 
+#include "atlas/util/detail/nanoflann.hpp"
+
 #include "eckit/container/KDTree.h"
 
 #include "atlas/library/config.h"
@@ -431,6 +433,170 @@ void KDTree_eckit<TreeT, PayloadT, PointT>::assert_built() const {
 }
 
 //------------------------------------------------------------------------------------------------------
+
+template<typename ValueTy>
+class ValueListAdaptor {
+public:   
+    ValueListAdaptor() = default;
+    explicit ValueListAdaptor(const std::vector<ValueTy>& values) : pts(values) {}
+
+    // --- Nanoflann interface ---
+    inline size_t kdtree_get_point_count() const { return pts.size(); }
+    
+    inline double kdtree_get_pt(const size_t idx, const size_t dim) const {
+        return pts[idx].point()[dim];
+    }
+
+    template <class BBOX>
+    bool kdtree_get_bbox(BBOX&) const { return false; }
+    // ----------------------------
+
+    std::vector<ValueTy> pts;
+};
+
+// Note - KDTree_nanoflann is currently designed as an alternative to KDTreeMemory,
+// but would probably be better as an alternative to KDTree_eckit. It can be used
+// in its current form as follows:
+// ```
+// auto nanoflann_kdtree_ = std::make_shared<
+//   util::detail::KDTree_nanoflann<atlas::idx_t, eckit::geometry::Point3>>();
+//
+// atlas::util::IndexKDTree atlas_kdtree_wrapper_{nanoflann_kdtree_, atlas::util::Geometry{}};
+// ```
+// Note - this implementation is working but should be considered a draft.
+// Note - nanoflann is thread-safe for queries (https://github.com/jlblancoc/nanoflann/issues/54)
+template <typename PayloadTy, typename PointTy = eckit::geometry::Point3>
+class KDTree_nanoflann {
+public:
+    using Interface = atlas::util::detail::KDTreeBase<PayloadTy, PointTy>;
+    using Payload = PayloadTy;
+    using Point = PointTy;
+    using Value = typename Interface::Value;
+    using ValueList = typename Interface::ValueList;
+    using DataSetAdaptor = ValueListAdaptor<Value>;
+    constexpr static int DIMS = Point::DIMS;
+    using Node = Value;
+
+    using Tree = nanoflann::KDTreeSingleIndexAdaptor<
+        nanoflann::L2_Simple_Adaptor<double, DataSetAdaptor>,
+        DataSetAdaptor,
+        DIMS
+    >;
+
+private:
+    DataSetAdaptor dataset_;
+    std::shared_ptr<Tree> index_;
+
+public:
+    KDTree_nanoflann() {}
+
+    KDTree_nanoflann(const std::shared_ptr<Tree>& tree): index_(tree) {}
+
+    atlas::idx_t size() const { 
+        return static_cast<atlas::idx_t>(dataset_.pts.size()); 
+    }
+
+    void build() {
+        if (!dataset_.pts.empty()) {
+            index_ = std::make_shared<Tree>(
+                DIMS, dataset_, nanoflann::KDTreeSingleIndexAdaptorParams(10 /* max leaf */)
+            );
+            index_->buildIndex();
+        } else {
+            index_.reset();
+        }
+    }
+    
+    void build(std::vector<Value>& values) {
+        dataset_.pts.clear();
+        dataset_.pts.reserve(values.size());
+        
+        for (const auto& value : values) {
+            dataset_.pts.emplace_back(value.point(), value.payload());
+        }
+        
+        build();
+    }
+
+    /// @brief Insert 3D cartesian point (x,y,z)
+    /// If memory has been reserved with reserve(), insertion will be delayed until build() is called.
+    void insert(const Value& value) {
+        // Insert immediately and rebuild index
+        dataset_.pts.emplace_back(value.point(), value.payload());
+        build();
+    }
+
+    /// @brief Find k nearest neighbours given a 3D cartesian point (x,y,z)
+    ValueList kNearestNeighbours(const Point& query_point, size_t k) const {
+        if (!index_) {
+            throw_AssertionFailed("KDTree was used before calling build()");
+        }
+
+        double query_pt[DIMS];
+        for (int i = 0; i < DIMS; ++i) {
+            query_pt[i] = query_point[i];
+        }
+
+        std::vector<size_t> ret_indexes(k);
+        std::vector<double> out_dists_sqr(k);
+        
+        nanoflann::KNNResultSet<double> resultSet(k);
+        resultSet.init(ret_indexes.data(), out_dists_sqr.data());
+        
+        bool found_k_neighbors = index_->findNeighbors(resultSet, query_pt);
+        if (size() >= k && !found_k_neighbors) {
+            throw_AssertionFailed("KDTree::kNearestNeighbours: not enough neighbors found");
+        }
+        
+        std::vector<Value> results;
+        results.reserve(k);
+
+        for (size_t i = 0; i < k; ++i) {
+            const auto& value = dataset_.pts[ret_indexes[i]];
+            results.emplace_back(value.point(), value.payload(), std::sqrt(out_dists_sqr[i]));
+        }
+        
+        return ValueList{results};
+    }
+
+    /// @brief Find nearest neighbour given a 3D cartesian point (x,y,z)
+    Value nearestNeighbour(const Point& query_point) const {
+        if (!index_) {
+            throw_AssertionFailed("KDTree was used before calling build()");
+        }
+        auto results = kNearestNeighbours(query_point, 1);
+        if (results.empty()) {
+            // Return a default value if no points found
+            return Value{query_point, Payload{}, std::numeric_limits<double>::max()};
+        }
+        return results[0];
+    }
+
+    /// @brief Find all points within a distance of given radius from a given point (x,y,z)
+    ValueList findInSphere(const Point& query_point, double radius) const {
+        if (!index_) {
+            throw_AssertionFailed("KDTree was used before calling build()");
+        }
+        
+        double query_pt[3] = {query_point[0], query_point[1], query_point[2]};
+        double radius_sqr = radius * radius;
+        
+        std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
+        nanoflann::RadiusResultSet<double, size_t> resultSet(radius_sqr, indices_dists);
+        
+        index_->findNeighbors(resultSet, query_pt);
+        
+        std::vector<Value> results;
+        results.reserve(indices_dists.size());
+        
+        for (const auto& idx_dist : indices_dists) {
+            const auto& value = dataset_.pts[idx_dist.first];
+            results.emplace_back(value.point(), value.payload(), std::sqrt(idx_dist.second));
+        }
+        
+        return ValueList{results};
+    }
+};
 
 }  // namespace detail
 }  // namespace util

@@ -22,9 +22,10 @@
 #include "atlas/functionspace/NodeColumns.h"
 #include "atlas/functionspace/Spectral.h"
 #include "atlas/functionspace/StructuredColumns.h"
+// ...XX...
+#include "atlas/grid/Partitioner.h"
 #include "atlas/mesh/IsGhostNode.h"
 #include "atlas/mesh/Nodes.h"
-#include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/runtime/Log.h"
 #include "atlas/trans/Trans.h"
@@ -900,7 +901,7 @@ void TransIFS::assertCompatibleDistributions(const FunctionSpace& gp, const Func
 TransIFS::TransIFS(const Cache& cache, const Grid& grid, const long truncation, const eckit::Configuration& config):
     grid_(grid), cache_(cache.legendre().data()), cachesize_(cache.legendre().size()) {
     ATLAS_ASSERT(grid.domain().global());
-    ATLAS_ASSERT(not grid.projection());
+    ATLAS_ASSERT(not grid.projection());    
     ctor(grid, truncation, config);
 }
 
@@ -1148,33 +1149,57 @@ const functionspace::Spectral& TransIFS::spectral() const {
     return spectral_;
 }
 
+// ...XX...
 void TransIFS::ctor(const Grid& grid, long truncation, const eckit::Configuration& config) {
     trans_ = std::shared_ptr<::Trans_t>(new ::Trans_t, [](::Trans_t* p) {
         ::trans_delete(p);
         delete p;
     });
 
+    std::string comm;
+    config.get("mpi_comm", comm);
+
+    // ...XX...
+    std::cout << "\nDEBUG - BP01 " << std::endl;
+    std::cout << "communicator (TransIFS) " << comm << std::endl;
+
+    
     if (auto gg = GaussianGrid(grid)) {
-        ctor_rgg(gg.ny(), gg.nx().data(), truncation, config);
+        ctor_rgg(gg.ny(), gg.nx().data(),
+		 truncation, config,
+		 atlas::mpi::comm(comm));
         return;
     }
     if (auto ll = RegularLonLatGrid(grid)) {
         if (ll.standard() || ll.shifted()) {
-            ctor_lonlat(ll.nx(), ll.ny(), truncation, config);
+            ctor_lonlat(ll.nx(), ll.ny(),
+			truncation, config,
+			atlas::mpi::comm(comm));
             return;
         }
     }
     throw_NotImplemented("Grid type not supported for Spectral Transforms", Here());
 }
 
-void TransIFS::ctor_rgg(const long nlat, const idx_t pl[], long truncation, const eckit::Configuration& config) {
+// ...XX...
+void TransIFS::ctor_rgg(const long nlat,
+			const idx_t pl[],
+			long truncation,
+			const eckit::Configuration& config,
+			const atlas::mpi::Comm& comm) {
     TransParameters p(*this, config);
+      
     std::vector<int> nloen(nlat);
     for (long jlat = 0; jlat < nlat; ++jlat) {
         nloen[jlat] = pl[jlat];
     }
+    
     TRANS_CHECK(::trans_new(trans_.get()));
+    
     TRANS_CHECK(::trans_use_mpi(mpi::size() > 1));
+    // ...XX...
+    TRANS_CHECK(::trans_set_mpi_comm(trans_.get(), comm.communicator()));
+
     TRANS_CHECK(::trans_set_resol(trans_.get(), nlat, nloen.data()));
     if (truncation >= 0) {
         TRANS_CHECK(::trans_set_trunc(trans_.get(), truncation));
@@ -1202,10 +1227,18 @@ void TransIFS::ctor_rgg(const long nlat, const idx_t pl[], long truncation, cons
     ATLAS_TRACE_SCOPE("trans_setup") { TRANS_CHECK(::trans_setup(trans_.get())); }
 }
 
-void TransIFS::ctor_lonlat(const long nlon, const long nlat, long truncation, const eckit::Configuration& config) {
+  
+// ...XX...
+void TransIFS::ctor_lonlat(const long nlon,
+			   const long nlat,
+			   long truncation,
+			   const eckit::Configuration& config,
+			   const atlas::mpi::Comm& comm) {
     TransParameters p(*this, config);
     TRANS_CHECK(::trans_new(trans_.get()));
     TRANS_CHECK(::trans_use_mpi(mpi::size() > 1));
+    // ...XX...
+    TRANS_CHECK(::trans_set_mpi_comm(trans_.get(), comm.communicator()));
     TRANS_CHECK(::trans_set_resol_lonlat(trans_.get(), nlon, nlat));
     if (truncation >= 0) {
         TRANS_CHECK(::trans_set_trunc(trans_.get(), truncation));

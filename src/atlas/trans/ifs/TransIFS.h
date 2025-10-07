@@ -16,6 +16,7 @@
 #include "atlas/functionspace/Spectral.h"
 #include "atlas/grid/Grid.h"
 #include "atlas/grid/StructuredGrid.h"
+#include "atlas/parallel/mpi/mpi.h"
 #include "atlas/runtime/Exception.h"
 #include "atlas/trans/detail/TransImpl.h"
 
@@ -348,9 +349,13 @@ protected:
 private:
     void ctor(const Grid&, long nsmax, const eckit::Configuration&);
 
-    void ctor_rgg(const long nlat, const idx_t pl[], long nsmax, const eckit::Configuration&);
+    void ctor_rgg(const long nlat, const idx_t pl[],
+		  long nsmax, const eckit::Configuration&,
+		  const atlas::mpi::Comm& comm);
 
-    void ctor_lonlat(const long nlon, const long nlat, long nsmax, const eckit::Configuration&);
+    void ctor_lonlat(const long nlon, const long nlat,
+		     long nsmax, const eckit::Configuration&,
+		     const atlas::mpi::Comm& comm);
 
 private:
     friend class grid::detail::partitioner::TransPartitioner;

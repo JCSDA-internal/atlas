@@ -37,50 +37,6 @@ if( HAVE_FCTEST )
 
 endif()
 
-ecbuild_add_test( TARGET atlas_test_trans
-  MPI      4
-  SOURCES   test_trans.cc
-  CONDITION atlas_HAVE_ECTRANS AND eckit_HAVE_MPI AND ( transi_HAVE_MPI OR ectrans_HAVE_MPI )
-  LIBS      atlas transi
-  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
-              # There seems to be a issue with vd2uv raising FE_INVALID, only on specific arch (bamboo-leap42-gnu63)
-              ATLAS_FPE=FE_OVERFLOW,FE_DIVBYZERO
-)
-
-ecbuild_add_test( TARGET atlas_test_trans_serial
-  SOURCES   test_trans.cc
-  CONDITION atlas_HAVE_ECTRANS
-  LIBS      atlas transi
-  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
-              # There seems to be a issue with vd2uv raising FE_INVALID, only on specific arch (bamboo-leap42-gnu63)
-              ATLAS_FPE=FE_OVERFLOW,FE_DIVBYZERO
-)
-
-ecbuild_add_test( TARGET atlas_test_trans_invtrans_grad
-  SOURCES   test_trans_invtrans_grad.cc
-  CONDITION atlas_HAVE_ECTRANS
-  LIBS      atlas transi
-  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
-)
-
-# Note: This duplication is needed because transi is a private library of atlas,
-#       and this tests needs access to the transi include directories.
-# ToDo: Fix this inside the test code so that we don't directly need to include transi headers.
-if( atlas_HAVE_ECTRANS )
-ecbuild_add_test( TARGET atlas_test_transgeneral
-  SOURCES   test_transgeneral.cc
-  LIBS      atlas transi
-  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT} ATLAS_TRACE_REPORT=1
-  CONDITION atlas_HAVE_FFTW
-)
-else()
-ecbuild_add_test( TARGET atlas_test_transgeneral
-  SOURCES   test_transgeneral.cc
-  LIBS      atlas
-  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT} ATLAS_TRACE_REPORT=1
-  CONDITION atlas_HAVE_FFTW
-)
-endif()
 
 
 ecbuild_add_test( TARGET atlas_test_trans_localcache
@@ -90,3 +46,22 @@ ecbuild_add_test( TARGET atlas_test_trans_localcache
   CONDITION atlas_HAVE_ATLAS_TRANS
 )
 
+
+#--
+
+# ...XX...
+ecbuild_add_test( TARGET atlas_test_trans_mpi_setup_01
+  SOURCES      test_trans_mpi_setup_01.cc
+  LIBS         atlas transi
+  ENVIRONMENT  ${ATLAS_TEST_ENVIRONMENT} ATLAS_FPE=FE_OVERFLOW,FE_DIVBYZERO
+  CONDITION    atlas_HAVE_ECTRANS AND eckit_HAVE_MPI AND ( transi_HAVE_MPI OR ectrans_HAVE_MPI )
+  MPI          4
+)
+
+ecbuild_add_test( TARGET atlas_test_trans_mpi_setup_02
+  SOURCES      test_trans_mpi_setup_02.cc
+  LIBS         atlas transi
+  ENVIRONMENT  ${ATLAS_TEST_ENVIRONMENT} ATLAS_FPE=FE_OVERFLOW,FE_DIVBYZERO
+  CONDITION    atlas_HAVE_ECTRANS AND eckit_HAVE_MPI AND ( transi_HAVE_MPI OR ectrans_HAVE_MPI )
+  MPI          4
+)

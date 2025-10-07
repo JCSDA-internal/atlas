@@ -8,6 +8,8 @@
  * nor does it submit to any jurisdiction.
  */
 
+// ...XX...
+#include <iostream>
 #include <sstream>
 
 #include "atlas/array.h"
@@ -61,7 +63,13 @@ void TransPartitioner::partition(const Grid& grid, int part[]) const {
         throw_Exception("Grid is not a grid::Structured type. Cannot partition using IFS trans", Here());
     }
 
-    trans::TransIFS t(grid);
+    // ...XX...
+    const atlas::mpi::Comm& comm = atlas::mpi::comm();
+    const auto config = atlas::util::Config("mpi_comm", comm.name());
+    std::cout << "\n\nDEBUG - BPA02" << std::endl;
+    std::cout << comm.name() << std::endl;
+  
+    trans::TransIFS t(grid, config);
     if (nb_partitions() != idx_t(t.nproc())) {
         std::stringstream msg;
         msg << "Requested to partition grid with TransPartitioner in " << nb_partitions()

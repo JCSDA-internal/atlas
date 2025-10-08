@@ -12,8 +12,6 @@
 
 #include "atlas/grid/detail/partitioner/Partitioner.h"
 
-// ...XX...
-#include <iostream>
 #include <map>
 #include <string>
 
@@ -100,11 +98,6 @@ Partitioner::Partitioner(const idx_t nb_partitions, const eckit::Parametrisation
 Partitioner::Partitioner(const eckit::Parametrisation& config) :
     nb_partitions_(extract_nb_partitions(config)),
     mpi_comm_(extract_mpi_comm(config)) {
-
-    // ...XX...
-    std::cout << "\n\nDEBUG - BPA01" << std::endl;
-    std::cout << mpi_comm_ << std::endl;
-
 }
 
 Partitioner::~Partitioner() = default;

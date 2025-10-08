@@ -1156,13 +1156,9 @@ void TransIFS::ctor(const Grid& grid, long truncation, const eckit::Configuratio
         delete p;
     });
 
+    // ...XX...
     std::string comm;
     config.get("mpi_comm", comm);
-
-    // ...XX...
-    std::cout << "\nDEBUG - BP01 " << std::endl;
-    std::cout << "communicator (TransIFS) " << comm << std::endl;
-
     
     if (auto gg = GaussianGrid(grid)) {
         ctor_rgg(gg.ny(), gg.nx().data(),

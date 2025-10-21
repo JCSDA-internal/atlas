@@ -115,6 +115,7 @@ call field_global_index%final()
 call fs%final()
 call fs_base%final()
 call grid%final()
+call field_index_j%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------
@@ -205,6 +206,16 @@ call fs%scatter(global,field)
 metadata = field%metadata()
 call metadata%get("test_broadcast",test_broadcast)
 FCTEST_CHECK_EQUAL( test_broadcast, 123 )
+
+call grid%final()
+call fs%final()
+call field%final()
+call global%final()
+call scal%final()
+call config%final()
+call metadata%final()
+call mpi%final()
+
 END_TEST
 
 END_TESTSUITE

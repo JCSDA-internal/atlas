@@ -81,6 +81,8 @@ TEST( test_initialise_field )
   field_val_v = MDPI_sinusoid(field_xy_v(1,:), field_xy_v(2,:))
   field_val_ref = [1.0002115216773033_c_double, 1.0002115216773033_c_double, 1.0002115216773033_c_double]
   FCTEST_CHECK_CLOSE(field_val_v, field_val_ref, 1e-12_c_double)
+  call field_xy%final()
+  call field_val%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------

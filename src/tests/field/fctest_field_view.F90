@@ -80,6 +80,8 @@ do k=1, blocks
   end do
 end do
 
+call field%final()
+
 END_TEST
 
 

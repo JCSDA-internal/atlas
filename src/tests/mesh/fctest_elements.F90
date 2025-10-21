@@ -41,6 +41,9 @@ TEST( test_elementtype )
   quad  = atlas_Quadrilateral()
   line  = atlas_Line()
 
+  call triag%final()
+  call quad%final()
+  call line%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------
@@ -177,6 +180,8 @@ TEST( test_hybridelements )
 
   call node_connectivity%final()
   call field%final()
+  call elements%final()
+  call element_type%final()
 
 END_TEST
 

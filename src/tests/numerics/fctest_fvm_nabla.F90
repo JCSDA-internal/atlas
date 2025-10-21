@@ -144,6 +144,9 @@ contains
         enddo
 
 
+        call nodes%final()
+        call lonlat%final()
+        call fs_nodecolumns%final()
 
     end subroutine
 
@@ -280,6 +283,15 @@ ENDDO
 
 END ASSOCIATE
 
+call LONLAT%final()
+call DUAL_VOLUMES%final()
+call DUAL_NORMALS%final()
+call NODE2EDGE_SIGN%final()
+call NODES%final()
+call EDGES%final()
+call EDGE2NODE%final()
+call NODE2EDGE%final()
+
 !IF (LHOOK) CALL DR_HOOK('FV_GRADIENT',1,ZHOOK_HANDLE)
 END SUBROUTINE FV_GRADIENT
 
@@ -357,6 +369,7 @@ fvm  = atlas_fvm_Method(mesh)
 
 call fvm%final()
 call mesh%final()
+call meshgenerator%final()
 call grid%final()
 
 END_TEST
@@ -411,6 +424,7 @@ gmsh = atlas_output_Gmsh("out_atlas_fctest_fvm_nabla.msh", levels=[10])
 call gmsh%write( mesh )
 call gmsh%write( varfield )
 call gmsh%write( gradfield )
+call gmsh%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------

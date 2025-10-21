@@ -109,6 +109,17 @@ TEST( test_multifield )
     field = fieldset_2%field("density")
     call field%data(fdata_d3d)
     FCTEST_CHECK_EQUAL(fdata_d3d(1,1,1), 4._c_double)
+    
+    do i = 1, size(field_configs)
+        call field_configs(i)%final()
+    end do
+
+    call mfield_1%final()
+    call mfield_2%final()
+    call fieldset_1%final()
+    call fieldset_2%final()
+    call field%final()
+    call config%final()
 END_TEST
 
 
@@ -163,6 +174,10 @@ TEST( test_device_strides_on_cpu )
         end do
       end do
     endif
+
+    call field%final()
+    call fieldset%final()
+    call mfield%final()
 END_TEST
 
 
@@ -212,6 +227,13 @@ TEST( test_multifield_array_direct_constructor )
     FCTEST_CHECK_EQUAL(fdata_f2d(1,1), 3._c_float)
     FCTEST_CHECK_EQUAL(fdata_d3d(1,1,1), 4._c_double)
 
+    call mfield_1%final()
+    call mfield_2%final()
+    call fieldset_1%final()
+    call fieldset_2%final()
+    call fieldset_3%final()
+    call config%final()
+    call field%final()
 END_TEST
 
 
@@ -283,6 +305,17 @@ TEST( test_multifield_array_config_constuctor )
     field = fieldset_2%field("density")
     call field%data(fdata_d3d)
     FCTEST_CHECK_EQUAL(fdata_d3d(1,1,1), 4._c_double)
+
+    do i = 1, size(field_configs)
+        call field_configs(i)%final()
+    end do
+
+    call mfield_1%final()
+    call mfield_2%final()
+    call fieldset_1%final()
+    call fieldset_2%final()
+    call config%final()
+    call field%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------

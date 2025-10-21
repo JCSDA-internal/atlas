@@ -191,6 +191,16 @@ TEST( test_meshgen )
   call gmsh%write(mesh)
 
   call atlas_write_load_balance_report(mesh,"N24_loadbalance.dat")
+
+  call grid%final()
+  call mesh%final()
+  call functionspace_nodes%final()
+  call functionspace_edges%final()
+  call halo_exchange%final()
+  call gmsh%final()
+  call nodes%final()
+  call edges%final()
+  call field%final()
 END_TEST
 
 

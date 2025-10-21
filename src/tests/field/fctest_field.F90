@@ -172,7 +172,10 @@ implicit none
   field = fieldset%field("field_00")
   FCTEST_CHECK_EQUAL(field%name(), "field_00")
 
+  call field%final()
+  call field_2%final()
   call fieldset%final()
+  call fieldset_2%final()
   write(0,*) "test_fieldset end"
 
 END_TEST

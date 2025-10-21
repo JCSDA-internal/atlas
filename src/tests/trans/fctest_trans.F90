@@ -237,6 +237,9 @@ TEST( test_trans )
   call mesh%final()
   call trans%final()
   call grid%final()
+  call trans_grid%final()
+  call partitioner%final()
+  call nodes%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------
@@ -333,6 +336,7 @@ TEST( test_trans_nomesh )
   call spectralfields%final()
   call trans%final()
   call grid%final()
+  call partitioner%final()
 END_TEST
 
 TEST( test_transdwarf )
@@ -399,6 +403,7 @@ call gridpoints%final()
 call spectral%final()
 call trans%final()
 call grid%final()
+call partitioner%final()
 END_TEST
 
 TEST( test_spectral_only )
@@ -472,6 +477,7 @@ call spectral%gather(field,fieldg)
 
 call field%final()
 call spectral%final()
+call fieldg%final()
 
 contains
 function sp_value(m,n,complex_component)

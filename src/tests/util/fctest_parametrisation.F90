@@ -129,6 +129,10 @@ TEST( test_parametrisation )
     call alist(j)%final()
   enddo
 
+  do j=1,size(list)
+    call list(j)%final()
+  enddo
+
   call anested%final()
 
   ! ---------------------------------------------
@@ -241,6 +245,7 @@ TEST(test_json_file)
  config = atlas_Config( json )
 
  call atlas_log%info("config = "//config%json())
+ call config%final()
 
 END_TEST
 

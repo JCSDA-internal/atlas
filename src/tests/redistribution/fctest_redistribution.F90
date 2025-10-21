@@ -56,9 +56,11 @@ redist_hlp = atlas_Redistribution(redist%c_ptr())
 fspace_hlp = redist%source()
 fspace_hlp = redist%target()
 
+call fspace_hlp%final()
 call field_1%final()
 call redist_hlp%final()
 call redist%final()
+call field_2%return()
 end function do_redistribute
 
 end module
@@ -125,6 +127,9 @@ FCTEST_CHECK(maxval(field_v) == 1.)
 call fspace_2%final()
 call fspace_1%final()
 call grid%final()
+call mesh%final()
+call meshgenerator%final()
+call field%final()
 END_TEST
 
 ! -----------------------------------------------------------------------------

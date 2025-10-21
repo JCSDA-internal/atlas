@@ -58,25 +58,31 @@ END_TEST
 TEST( rotated_regional_grid )
 #if 1
     type(atlas_Grid) :: grid1, grid2
+    type(atlas_Projection) :: projection
+    projection = atlas_RotatedLonLatProjection([40._dp,20._dp])
     grid1 = atlas_RegionalGrid(  nx=11, ny=11, xy_min=[0._dp,-5._dp], xy_max=[10._dp,5._dp], &
-               & projection=atlas_RotatedLonLatProjection([40._dp,20._dp]) )
+               & projection=projection )
     grid2 = atlas_RegionalGrid( nx=11, ny=11, north=5._dp, west=0._dp, south=-5._dp, east=10._dp, &
-               & projection=atlas_RotatedLonLatProjection([40._dp,20._dp]) )
+               & projection=projection )
     call print_spec(grid1)
     FCTEST_CHECK_EQUAL( grid1%uid() , grid2%uid() )
     call grid1%final()
     call grid2%final()
+    call projection%final()
 #endif
 END_TEST
 
 TEST( lambert_grid )
 #if 1
     type(atlas_Grid) :: grid
+    type(atlas_Projection) :: projection
+    projection = atlas_LambertConformalConicProjection(4.0_dp,50._dp)
     grid = atlas_RegionalGrid( nx=11, ny=11, dx=10000._dp,dy=10000._dp, &
                & xy_min=[-50000._dp,-50000._dp],  &
-               & projection=atlas_LambertConformalConicProjection(4.0_dp,50._dp) )
+               & projection=projection )
     call print_spec(grid)
     call grid%final()
+    call projection%final()
 #endif
 END_TEST
 
@@ -118,6 +124,7 @@ TEST( test_regional_lambert_grid_MF )
   ! Grid provided by Philippe Marguinaud, Meteo France
   type(atlas_StructuredGrid) :: grid
   type(atlas_LonLatRectangularDomain) :: bounding_box
+  type(atlas_Projection) :: projection
 
   integer(c_int), parameter :: ndlon=64
   integer(c_int), parameter :: ndglg=64
@@ -133,10 +140,11 @@ TEST( test_regional_lambert_grid_MF )
   real(c_double), parameter :: lovindegrees=2.0
   real(c_double), parameter :: tol = 1.e-5_dp
 
+  projection = atlas_LambertConformalConicProjection(lovindegrees,ladindegrees, &
+               &            latin1indegrees,latin2indegrees)
   grid = atlas_RegionalGrid( nx=ndlon, ny=ndglg, xy_min=[xmin,ymin], &
                & dx=dxinmetres, dy=dyinmetres, &
-               & projection=atlas_LambertConformalConicProjection(lovindegrees,ladindegrees, &
-               &            latin1indegrees,latin2indegrees) )
+               & projection=projection )
 
   FCTEST_CHECK_EQUAL( grid%size(), ndglg*ndlon )
 
@@ -155,6 +163,7 @@ TEST( test_regional_lambert_grid_MF )
 
   call bounding_box%final()
   call grid%final()
+  call projection%final()
 #endif
 END_TEST
 

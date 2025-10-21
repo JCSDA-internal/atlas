@@ -107,8 +107,12 @@ implicit none
   node_to_node = nodes%connectivity("node")
   node_to_edge = nodes%connectivity("edge")
 
+  call node_to_edge%final()
   call node_to_node%final()
+  call edges%final()
+  call nodes%final()
   call mesh%final()
+  call meshgenerator%final()
   call grid%final()
   call nodes_fs%final()
 

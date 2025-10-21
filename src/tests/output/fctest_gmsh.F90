@@ -94,6 +94,14 @@ TEST( test_gmsh )
   call fieldset%add(field)
   
   call gmsh%write(fieldset)
+  call gmsh%final()
+  call grid%final()
+  call mesh%final()
+  call meshgenerator%final()
+  call functionspace_nodes%final()
+  call nodes%final()
+  call field%final()
+  call fieldset%final()
   
   
   END_TEST

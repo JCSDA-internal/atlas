@@ -127,6 +127,7 @@ FCTEST_CHECK_EQUAL( field%name() , "field" )
 call field%final()
 call template%final()
 
+call nodes%final()
 call fs%final()
 call mesh%final()
 call grid%final()
@@ -362,6 +363,8 @@ call fs2d%final()
 
 call mesh%final()
 call grid%final()
+call metadata%final()
+call mpi%final()
 #endif
 END_TEST
 
@@ -447,6 +450,8 @@ call field%final()
 call global%final()
 call fs2d%final()
 
+call metadata%final()
+call mpi%final()
 call mesh%final()
 call grid%final()
 #endif
@@ -539,6 +544,7 @@ FCTEST_CHECK_EQUAL( field%name() , "field" )
 call field%final()
 call template%final()
 
+call cells%final()
 call fs%final()
 call mesh%final()
 call grid%final()
@@ -793,6 +799,7 @@ FCTEST_CHECK_EQUAL( field%kind() , atlas_real(c_float) )
 call field%final()
 
 
+call meshgenerator%final()
 call fs%final()
 call edges%final()
 call mesh%final()
@@ -869,6 +876,7 @@ write(0,*) "after: owners = " , fs_base%owners()
 FCTEST_CHECK_EQUAL( field%owners(), 1 )
 call field%final()
 FCTEST_CHECK_EQUAL( field_xy%owners(), 1 )
+call field_index_j%final()
 call field_xy%final()
 call field_global_index%final()
 call fs%final()
@@ -932,6 +940,8 @@ call field%final()
 #ifndef _CRAYFTN
 FCTEST_CHECK_EQUAL( field_lonlat%owners(), 1 )
 #endif
+call field2%final()
+call trace%final()
 call field_lonlat%final()
 call fs%final()
 call fs_base%final()
@@ -1051,6 +1061,17 @@ do i = 1, 4
     end if
 end do
 end do
+
+call trace%final()
+call fs_base%final()
+call fset%final()
+call fld_values_save%final()
+call fld_values%final()
+call fld_remote_index%final()
+call fld_partition%final()
+call fld_ghost%final()
+call fld_points%final()
+call fs%final()
 
 #else
 #warning test_pointcloud_partition_remote disabled

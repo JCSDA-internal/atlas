@@ -104,6 +104,10 @@ FCTEST_CHECK(state%has("pressure") .eqv. .False.)
 
 ! Delete the state
 call state%final()
+call temperature_field%final()
+call pressure_field%final()
+call field%final()
+call metadata%final()
 #endif
 END_TEST
 
@@ -138,6 +142,7 @@ state_metadata = state%metadata()
 call state_metadata%set("integer",1)
 
 ! Delete the state
+call state_metadata%final()
 call state%final()
 #endif
 END_TEST

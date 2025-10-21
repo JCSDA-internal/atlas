@@ -84,6 +84,15 @@ TEST( test_trans )
   call trans%invtrans( sp_scal_field, gp_scal_field, config )
   call trans%invtrans_vordiv2wind( sp_vor_field,  sp_div_field, gp_wind_field, config )
 
+  call config%final()
+  call gp_scal_field%final()
+  call gp_wind_field%final()
+  call sp_scal_field%final()
+  call sp_vor_field%final()
+  call sp_div_field%final()
+  call spectral%final()
+  call trans%final()
+  call grid%final()
 contains
 
   subroutine set_zero( field )

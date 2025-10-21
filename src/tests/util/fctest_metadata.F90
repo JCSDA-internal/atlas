@@ -95,6 +95,7 @@ implicit none
   FCTEST_CHECK_EQUAL( arr_int32, (/1,2,3/) )
   FCTEST_CHECK_EQUAL( arr_real32, (/1.1_c_float,2.1_c_float,3.7_c_float/) )
 
+  call metadata%delete()
   call metadata%final()
   call info%final()
 

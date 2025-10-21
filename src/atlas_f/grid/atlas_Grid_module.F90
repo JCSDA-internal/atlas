@@ -1046,6 +1046,7 @@ function atlas_RegionalGrid_ctor_int32( nx, ny, xy_min, xy_max, projection, y_nu
     type(atlas_Projection), intent(in), optional :: projection
     integer(c_int), intent(in), optional :: y_numbering
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1056,13 +1057,15 @@ function atlas_RegionalGrid_ctor_int32( nx, ny, xy_min, xy_max, projection, y_nu
     call config%set("xmax",xy_max(1))
     call config%set("ymax",xy_max(2))
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
     endif
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 
@@ -1074,6 +1077,7 @@ function atlas_RegionalGrid_ctor_int64( nx, ny, xy_min, xy_max, projection, y_nu
     type(atlas_Projection), intent(in), optional :: projection
     integer(c_int), intent(in), optional :: y_numbering
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1084,13 +1088,15 @@ function atlas_RegionalGrid_ctor_int64( nx, ny, xy_min, xy_max, projection, y_nu
     call config%set("xmax",xy_max(1))
     call config%set("ymax",xy_max(2))
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
     endif
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 
@@ -1103,6 +1109,7 @@ function atlas_RegionalGrid_ctor_nwse_int32( nx, ny, north, west, south, east, p
     type(atlas_Projection), intent(in), optional :: projection
     integer(c_int), intent(in), optional :: y_numbering
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1113,13 +1120,15 @@ function atlas_RegionalGrid_ctor_nwse_int32( nx, ny, north, west, south, east, p
     call config%set("south",south)
     call config%set("east",east)
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
     endif
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 
@@ -1131,6 +1140,7 @@ function atlas_RegionalGrid_ctor_nwse_int64( nx, ny, north, west, south, east, p
     type(atlas_Projection), intent(in), optional :: projection
     integer(c_int), intent(in), optional :: y_numbering
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1141,13 +1151,15 @@ function atlas_RegionalGrid_ctor_nwse_int64( nx, ny, north, west, south, east, p
     call config%set("south",south)
     call config%set("east",east)
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
     endif
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 
@@ -1164,6 +1176,7 @@ function atlas_RegionalGrid_ctor_increments_int32( nx, ny, dx, dy, xy_min, proje
     integer(c_int), intent(in), optional :: y_numbering
 
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1174,7 +1187,8 @@ function atlas_RegionalGrid_ctor_increments_int32( nx, ny, dx, dy, xy_min, proje
     call config%set("dx",dx)
     call config%set("dy",dy)
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
@@ -1182,6 +1196,7 @@ function atlas_RegionalGrid_ctor_increments_int32( nx, ny, dx, dy, xy_min, proje
 
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 
@@ -1197,6 +1212,7 @@ function atlas_RegionalGrid_ctor_increments_int64( nx, ny, dx, dy, xy_min, proje
     integer(c_int), intent(in), optional :: y_numbering
 
     type(atlas_Config) :: config
+    type(atlas_Config) :: spec
 
     config = atlas_Config()
     call config%set("type","regional")
@@ -1207,7 +1223,8 @@ function atlas_RegionalGrid_ctor_increments_int64( nx, ny, dx, dy, xy_min, proje
     call config%set("dx",dx)
     call config%set("dy",dy)
     if( present(projection) ) then
-      call config%set("projection",projection%spec())
+      spec = projection%spec()
+      call config%set("projection", spec)
     endif
     if( present(y_numbering) ) then
       call config%set("y_numbering",y_numbering)
@@ -1215,6 +1232,7 @@ function atlas_RegionalGrid_ctor_increments_int64( nx, ny, dx, dy, xy_min, proje
 
     this = atlas_StructuredGrid(config)
     call config%final()
+    call spec%final()
     call this%return()
 end function
 

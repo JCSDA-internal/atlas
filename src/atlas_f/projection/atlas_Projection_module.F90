@@ -183,6 +183,7 @@ if( present(north_pole) ) then
   call config%set("north_pole",north_pole)
 endif
 this = atlas_Projection(config)
+call config%final()
 call this%return()
 end function
 
@@ -207,6 +208,7 @@ if( present(latitude2) ) then
   call config%set("latitude2",latitude2)
 endif
 this = atlas_Projection(config)
+call config%final()
 call this%return()
 end function
 
@@ -225,6 +227,7 @@ if( present(rotation_angle) ) then
   call config%set("rotation_angle", rotation_angle)
 endif
 this = atlas_Projection(config)
+call config%final()
 call this%return()
 end function
 

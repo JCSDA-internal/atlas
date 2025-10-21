@@ -9,6 +9,7 @@
  */
 
 #include <fstream>
+#include <memory>
 
 #include "atlas/field/Field.h"
 #include "atlas/field/FieldSet.h"
@@ -23,9 +24,9 @@ Interpolation::Interpolation(const Config& config, const FunctionSpace& source, 
     Handle([&]() -> Implementation* {
         std::string type;
         ATLAS_ASSERT(config.get("type", type));
-        Implementation* impl = interpolation::MethodFactory::build(type, config);
+        std::unique_ptr<Implementation> impl(interpolation::MethodFactory::build(type, config));
         impl->setup(source, target);
-        return impl;
+        return impl.release();
     }()) {
     std::string path;
     if (config.get("output", path)) {
@@ -38,9 +39,9 @@ Interpolation::Interpolation(const Config& config, const Grid& source, const Gri
     Handle([&]() -> Implementation* {
         std::string type;
         ATLAS_ASSERT(config.get("type", type));
-        Implementation* impl = interpolation::MethodFactory::build(type, config);
+        std::unique_ptr<Implementation> impl(interpolation::MethodFactory::build(type, config));
         impl->setup(source, target);
-        return impl;
+        return impl.release();
     }()) {
     std::string path;
     if (config.get("output", path)) {
@@ -53,9 +54,9 @@ Interpolation::Interpolation(const Config& config, const FunctionSpace& source, 
     Handle([&]() -> Implementation* {
         std::string type;
         ATLAS_ASSERT(config.get("type", type));
-        Implementation* impl = interpolation::MethodFactory::build(type, config);
+        std::unique_ptr<Implementation> impl(interpolation::MethodFactory::build(type, config));
         impl->setup(source, target);
-        return impl;
+        return impl.release();
     }()) {
     std::string path;
     if (config.get("output", path)) {
@@ -68,9 +69,9 @@ Interpolation::Interpolation(const Interpolation::Config& config, const Function
     Handle([&]() -> Implementation* {
         std::string type;
         ATLAS_ASSERT(config.get("type", type));
-        Implementation* impl = interpolation::MethodFactory::build(type, config);
+        std::unique_ptr<Implementation> impl(interpolation::MethodFactory::build(type, config));
         impl->setup(source, target);
-        return impl;
+        return impl.release();
     }()) {
     std::string path;
     if (config.get("output", path)) {

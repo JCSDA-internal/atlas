@@ -631,14 +631,14 @@ void StructuredColumns::setup(const grid::Distribution& distribution, const ecki
             ghost(gp.r)   = 0;
         }
 
-        // Following short loops are not parallelized with
+        // Following short loops are not parallelized with OpenMP
 
         for (idx_t j = j_begin_halo_; j < j_begin_; ++j) {
             for (idx_t i = i_begin_halo_(j); i < i_end_halo_(j); ++i) {
                 ghost(index(i, j)) = 1;
             }
         }
-        atlas_omp_parallel_for(idx_t j = j_begin_; j < j_end_; ++j) {
+        atlas_omp_parallel_for(gidx_t j = j_begin_; j < j_end_; ++j) {
             for (idx_t i = i_begin_halo_(j); i < i_begin_[j]; ++i) {
                 ghost(index(i, j)) = 1;
             }

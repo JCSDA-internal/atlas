@@ -12,6 +12,7 @@
 
 #include "atlas/interpolation/method/Method.h"
 
+#include <sstream>
 #include <string>
 
 #include "eckit/config/Configuration.h"
@@ -21,16 +22,27 @@
 #include "atlas/functionspace/FunctionSpace.h"
 #include "atlas/interpolation/method/PointIndex3.h"
 #include "atlas/mesh/Elements.h"
+#include "atlas/runtime/Exception.h"
 
 namespace atlas {
 namespace interpolation {
 namespace method {
+
+enum class PolygonType
+{
+    facet,
+    spherical
+};
 
 class FiniteElement : public Method {
 public:
     FiniteElement(const Config& config): Method(config) {
         config.get("max_fraction_elems_to_try", max_fraction_elems_to_try_);
         config.get("treat_failure_as_missing_value", treat_failure_as_missing_value_);
+
+        // Convert string to enum and store string for print
+        config.get("interpolation_polygon_type", interpolation_polygon_type_string_);
+        setInterpolationPolygonType(interpolation_polygon_type_string_);
     }
 
     virtual ~FiniteElement() override {}
@@ -54,15 +66,21 @@ protected:
     /**
    * Find in which element the point is contained by projecting (ray-tracing)
    * the
-   * point to the nearest element(s), returning the (normalized) interpolation
+   * point to the nearest element(s), returning the interpolation
    * weights
    */
+    Triplets projectPointToElementsWrapper(size_t ip, const ElemIndex3::NodeList& elems) const;
+    // Normalised barycentric/bilinear weights
     Triplets projectPointToElements(size_t ip, const ElemIndex3::NodeList& elems) const;
+    // Spherical mean value weights
+    Triplets projectPointToElementsSpherical(size_t ip, const ElemIndex3::NodeList& elems) const;
 
     virtual const FunctionSpace& source() const override { return source_; }
     virtual const FunctionSpace& target() const override { return target_; }
 
 private:
+    void setInterpolationPolygonType(std::string& type);
+
     using Method::do_setup;
     virtual void do_setup(const FunctionSpace& source, const FunctionSpace& target) override;
     virtual void do_setup(const Grid& source, const Grid& target, const Cache&) override;
@@ -83,6 +101,8 @@ protected:
 
     bool treat_failure_as_missing_value_{true};
     double max_fraction_elems_to_try_{0.2};
+    std::string interpolation_polygon_type_string_{"facet"};
+    PolygonType interpolation_polygon_type_{PolygonType::facet};
 };
 
 }  // namespace method

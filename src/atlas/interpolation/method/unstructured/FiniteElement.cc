@@ -14,6 +14,9 @@
 
 #include "FiniteElement.h"
 
+#include "atlas/interpolation/Vector3D.h"
+#include "atlas/interpolation/element/SphericalPolygon3D.h"
+#include "atlas/interpolation/method/PointIndex3.h"
 #include "eckit/log/Plural.h"
 #include "eckit/log/ProgressTimer.h"
 #include "eckit/log/Seconds.h"
@@ -84,7 +87,7 @@ void FiniteElement::do_setup(const Grid& source, const Grid& target, const Cache
     do_setup(make_nodecolumns(source), functionspace::PointCloud{target});
 }
 
-void FiniteElement::do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache& cache) { 
+void FiniteElement::do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache& cache) {
     if (interpolation::MatrixCache(cache)) {
         setMatrix(cache);
         source_ = source;
@@ -103,8 +106,6 @@ void FiniteElement::do_setup(const FunctionSpace& source, const FunctionSpace& t
     target_ = target;
 
     ATLAS_TRACE_SCOPE("Setup target") {
-
-
         auto create_xyz = [](Field lonlat_field) {
             auto xyz_field = Field("xyz", array::make_datatype<double>(), array::make_shape(lonlat_field.shape(0), 3));
             auto lonlat    = array::make_view<double, 2>(lonlat_field);
@@ -124,10 +125,10 @@ void FiniteElement::do_setup(const FunctionSpace& source, const FunctionSpace& t
         target_lonlat_ = target.lonlat();
         if (functionspace::NodeColumns tgt = target) {
             auto meshTarget = tgt.mesh();
-            target_xyz_    = mesh::actions::BuildXYZField("xyz")(meshTarget);
+            target_xyz_     = mesh::actions::BuildXYZField("xyz")(meshTarget);
         }
         else {
-            target_xyz_    = create_xyz(target_lonlat_);
+            target_xyz_ = create_xyz(target_lonlat_);
         }
     }
 
@@ -141,12 +142,32 @@ struct Stencil {
     };
 };
 
+void FiniteElement::setInterpolationPolygonType(std::string& type) {
+    {
+        // Ensures that string matches enum if called outside constructor
+        interpolation_polygon_type_string_ = type;
+
+        if (type == "facet") {
+            interpolation_polygon_type_ = PolygonType::facet;
+        }
+        else if (type == "spherical") {
+            interpolation_polygon_type_ = PolygonType::spherical;
+        }
+        else {
+            std::ostringstream msg;
+            msg << "Could not find PolygonType corresponding to: " << type;
+            throw_Exception(msg.str(), Here());
+        }
+    }
+}
+
 void FiniteElement::print(std::ostream& out) const {
     functionspace::NodeColumns src(source_);
     functionspace::NodeColumns tgt(target_);
     out << "atlas::interpolation::method::FiniteElement{" << std::endl;
     out << "max_fraction_elems_to_try: " << max_fraction_elems_to_try_;
     out << ", treat_failure_as_missing_value: " << treat_failure_as_missing_value_;
+    out << ", interpolation_polygon_type_string_: " << interpolation_polygon_type_string_;
     if (not tgt) {
         out << "}" << std::endl;
         return;
@@ -265,7 +286,7 @@ void FiniteElement::setup(const FunctionSpace& source) {
     weights_triplets.resize(out_npts * 4);  // preallocate space as if all elements where quads
     auto insert_triplets = [&weights_triplets](idx_t n, const Triplets& triplets) -> bool {
         if (triplets.size()) {
-            std::copy(triplets.begin(), triplets.end(), weights_triplets.begin()+4*n);
+            std::copy(triplets.begin(), triplets.end(), weights_triplets.begin() + 4 * n);
             return true;
         }
         return false;
@@ -273,26 +294,28 @@ void FiniteElement::setup(const FunctionSpace& source) {
 
     double search_radius = 0.;
     if (meshSource.metadata().has("cell_maximum_diagonal_on_unit_sphere")) {
-        search_radius = Geometry("Earth").radius() * meshSource.metadata().getDouble("cell_maximum_diagonal_on_unit_sphere");
+        search_radius =
+            Geometry("Earth").radius() * meshSource.metadata().getDouble("cell_maximum_diagonal_on_unit_sphere");
         ASSERT(search_radius > 0.);
-        Log::debug() << "k-d tree: search radius = " << search_radius/1000. << " km" << std::endl;
+        Log::debug() << "k-d tree: search radius = " << search_radius / 1000. << " km" << std::endl;
     }
-    auto find_element_candidates_in_search_radius = [&eTree,&search_radius](const PointXYZ& p) {
+    auto find_element_candidates_in_search_radius = [&eTree, &search_radius](const PointXYZ& p) {
         return eTree->findInSphere(p, search_radius);
     };
     auto find_k_nearest_element_candidates = [&eTree](const PointXYZ& p, size_t k) {
         return eTree->kNearestNeighbours(p, k);
     };
-    auto try_interpolate_with_element_candidates = [&insert_triplets, this](idx_t n, const ElemIndex3::NodeList& element_candidates) -> bool {
+    auto try_interpolate_with_element_candidates =
+        [&insert_triplets, this](idx_t n, const ElemIndex3::NodeList& element_candidates) -> bool {
         if (element_candidates.empty()) {
             return false;
         }
-        return insert_triplets(n, projectPointToElements(n, element_candidates));
+        return insert_triplets(n, projectPointToElementsWrapper(n, element_candidates));
     };
 
 
     // search nearest k cell centres
-    const idx_t maxNbElemsToTry = std::max<idx_t>(8, idx_t(Nelements * max_fraction_elems_to_try_));
+    const idx_t maxNbElemsToTry             = std::max<idx_t>(8, idx_t(Nelements * max_fraction_elems_to_try_));
     size_t diagnosed_max_neighbours         = 0;
     bool allowed_to_diagnose_max_neighbours = Log::debug() && atlas_omp_get_max_threads() > 1;
 
@@ -301,23 +324,24 @@ void FiniteElement::setup(const FunctionSpace& source) {
     ATLAS_TRACE_SCOPE("Computing interpolation matrix") {
         std::unique_ptr<eckit::ProgressTimer> progress;
         if (atlas_omp_get_max_threads() == 1) {
-            progress.reset(new eckit::ProgressTimer{"Computing interpolation weights", static_cast<size_t>(out_npts), "point", double(5), Log::debug()});
+            progress.reset(new eckit::ProgressTimer{"Computing interpolation weights", static_cast<size_t>(out_npts),
+                                                    "point", double(5), Log::debug()});
         }
-        atlas_omp_parallel_for (idx_t ip = 0; ip < out_npts; ++ip) {
+        atlas_omp_parallel_for(idx_t ip = 0; ip < out_npts; ++ip) {
             if (out_ghosts(ip)) {
                 continue;
             }
 
             bool success = false;
             if (search_radius != 0.) {
-                auto p = target_point(ip);
+                auto p  = target_point(ip);
                 success = try_interpolate_with_element_candidates(ip, find_element_candidates_in_search_radius(p));
             }
             else {
                 size_t k = 1;
-                auto p = target_point(ip);
+                auto p   = target_point(ip);
                 while (!success && k <= maxNbElemsToTry) {
-                    if (allowed_to_diagnose_max_neighbours) { // avoid race condition
+                    if (allowed_to_diagnose_max_neighbours) {  // avoid race condition
                         diagnosed_max_neighbours = std::max(k, diagnosed_max_neighbours);
                     }
                     success = try_interpolate_with_element_candidates(ip, find_k_nearest_element_candidates(p, k));
@@ -336,7 +360,8 @@ void FiniteElement::setup(const FunctionSpace& source) {
         }
     }
     if (diagnosed_max_neighbours) {
-        Log::debug() << "Maximum neighbours searched was " << eckit::Plural(diagnosed_max_neighbours, "element") << std::endl;
+        Log::debug() << "Maximum neighbours searched was " << eckit::Plural(diagnosed_max_neighbours, "element")
+                     << std::endl;
     }
 
     if (failures.size()) {
@@ -370,6 +395,20 @@ struct ElementEdge {
         idx[1]    = tmp;
     }
 };
+
+Method::Triplets FiniteElement::projectPointToElementsWrapper(size_t ip, const ElemIndex3::NodeList& elems) const {
+    switch (interpolation_polygon_type_) {
+        case PolygonType::facet:
+            return projectPointToElements(ip, elems);
+        case PolygonType::spherical:
+            return projectPointToElementsSpherical(ip, elems);
+        default:
+            std::stringstream msg;
+            msg << "Could not find interpolation (projectPointToElements) function corresponding to: "
+                << interpolation_polygon_type_string_;
+            throw_Exception(msg.str(), Here());
+    };
+}
 
 Method::Triplets FiniteElement::projectPointToElements(size_t ip, const ElemIndex3::NodeList& elems) const {
     ATLAS_ASSERT(elems.begin() != elems.end());
@@ -598,6 +637,106 @@ Method::Triplets FiniteElement::projectPointToElements(size_t ip, const ElemInde
     if (!triplets.empty()) {
         normalise(triplets);
     }
+    return triplets;
+}
+
+Method::Triplets FiniteElement::projectPointToElementsSpherical(size_t ip, const ElemIndex3::NodeList& elems) const {
+    ATLAS_ASSERT(elems.begin() != elems.end());
+
+    const size_t inp_points = icoords_->shape(0);
+    std::array<size_t, 4> idx;
+
+    Triplets triplets;
+    triplets.reserve(4);
+    const Vector3D candidatePoint{(*ocoords_)(ip, size_t(0)), (*ocoords_)(ip, size_t(1)), (*ocoords_)(ip, size_t(2))};
+
+    for (ElemIndex3::NodeList::const_iterator itc = elems.begin(); itc != elems.end(); ++itc) {
+        const idx_t elem_id = idx_t((*itc).value().payload());
+        ATLAS_ASSERT(elem_id < connectivity_->rows());
+
+        const idx_t nb_cols = [&]() {
+            int nb_cols = connectivity_->cols(elem_id);
+            if (nb_cols == 5) {
+                // Check if pentagon degenerates to quad. Otherwise abort.
+                // For now only check if the last point is a duplicate.
+                auto get_p = [&](idx_t i) {
+                    auto n = (*connectivity_)(elem_id, i);
+                    return PointXYZ{(*icoords_)(n, XX), (*icoords_)(n, YY), (*icoords_)(n, ZZ)};
+                };
+                auto p4 = get_p(4);
+                if (p4 == get_p(0)) {
+                    return 4;
+                }
+                if (p4 == get_p(3)) {
+                    return 4;
+                }
+            }
+            return nb_cols;
+        }();
+
+        ATLAS_ASSERT(nb_cols == 3 || nb_cols == 4);
+
+        for (idx_t i = 0; i < nb_cols; ++i) {
+            idx[i] = (*connectivity_)(elem_id, i);
+            ATLAS_ASSERT(idx[i] < inp_points);
+        }
+
+        if (nb_cols == 3) {
+            const std::array<const Vector3D, 3> listVertices = {
+                Vector3D{(*icoords_)(idx[0], size_t(0)), (*icoords_)(idx[0], size_t(1)),
+                         (*icoords_)(idx[0], size_t(2))},
+                Vector3D{(*icoords_)(idx[1], size_t(0)), (*icoords_)(idx[1], size_t(1)),
+                         (*icoords_)(idx[1], size_t(2))},
+                Vector3D{(*icoords_)(idx[2], size_t(0)), (*icoords_)(idx[2], size_t(1)),
+                         (*icoords_)(idx[2], size_t(2))}};
+
+            element::SphericalPolygon3D<3> currentPolygon(listVertices);
+
+            // pick an epsilon based on a characteristic length (sqrt(area))
+            // (this scales linearly so it better compares with weights)
+            const double edgeEpsilon = parametricEpsilon * sqrt(currentPolygon.area());
+            ATLAS_ASSERT(edgeEpsilon >= 0);
+
+            std::optional<std::array<double, 3>> polygonWeights =
+                currentPolygon.computeWeights(candidatePoint, edgeEpsilon);
+
+            if (polygonWeights) {
+                for (size_t i = 0; i < 3; ++i) {
+                    triplets.emplace_back(ip, idx[i], (*polygonWeights)[i]);
+                }
+                break;
+            }
+        }
+        else {  // replace with else if, if we wish to add pentagons
+            const std::array<const Vector3D, 4> listVertices = {
+                Vector3D{(*icoords_)(idx[0], size_t(0)), (*icoords_)(idx[0], size_t(1)),
+                         (*icoords_)(idx[0], size_t(2))},
+                Vector3D{(*icoords_)(idx[1], size_t(0)), (*icoords_)(idx[1], size_t(1)),
+                         (*icoords_)(idx[1], size_t(2))},
+                Vector3D{(*icoords_)(idx[2], size_t(0)), (*icoords_)(idx[2], size_t(1)),
+                         (*icoords_)(idx[2], size_t(2))},
+                Vector3D{(*icoords_)(idx[3], size_t(0)), (*icoords_)(idx[3], size_t(1)),
+                         (*icoords_)(idx[3], size_t(2))}};
+
+            element::SphericalPolygon3D<4> currentPolygon(listVertices);
+
+            // pick an epsilon based on a characteristic length (sqrt(area))
+            // (this scales linearly so it better compares with weights)
+            const double edgeEpsilon = parametricEpsilon * sqrt(currentPolygon.area());
+            ATLAS_ASSERT(edgeEpsilon >= 0);
+
+            std::optional<std::array<double, 4>> polygonWeights =
+                currentPolygon.computeWeights(candidatePoint, edgeEpsilon);
+
+            if (polygonWeights) {
+                for (size_t i = 0; i < 4; ++i) {
+                    triplets.emplace_back(ip, idx[i], (*polygonWeights)[i]);
+                }
+                break;
+            }
+        }
+    }
+
     return triplets;
 }
 

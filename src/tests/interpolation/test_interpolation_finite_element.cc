@@ -10,6 +10,7 @@
 
 #include <cmath>
 
+#include "atlas/util/Config.h"
 #include "eckit/types/FloatCompare.h"
 
 #include "atlas/array.h"
@@ -32,6 +33,28 @@ namespace test {
 
 //-----------------------------------------------------------------------------
 
+std::array<util::Config, 2> polygonTypes = {util::Config("interpolation_polygon_type", "facet"),
+                                            util::Config("interpolation_polygon_type", "spherical")};
+
+CASE("test_interpolation_finite_element_defaults") {
+    Grid grid("O64");
+    Mesh mesh(grid);
+    NodeColumns fs(mesh);
+
+    // Some points at the equator
+    PointCloud pointcloud(
+        {{00., 0.}, {10., 0.}, {20., 0.}, {30., 0.}, {40., 0.}, {50., 0.}, {60., 0.}, {70., 0.}, {80., 0.}, {90., 0.}});
+
+    Interpolation interpolation(option::type("finite-element"), fs, pointcloud);
+
+    std::stringstream test_stream;
+    interpolation.print(test_stream);
+    std::string test_string = test_stream.str();
+
+    EXPECT((test_string.find("max_fraction_elems_to_try: 0.2") != std::string::npos));
+    EXPECT((test_string.find("facet") != std::string::npos));
+}
+
 CASE("test_interpolation_finite_element") {
     Grid grid("O64");
     Mesh mesh(grid);
@@ -43,37 +66,50 @@ CASE("test_interpolation_finite_element") {
 
     auto func = [](double x) -> double { return std::sin(x * M_PI / 180.); };
 
-    Interpolation interpolation(option::type("finite-element") | util::Config("max_fraction_elems_to_try", 0.4), fs,
-                                pointcloud);
+    for (util::Config polygonTypeConfig : polygonTypes) {
+        std::string polygonTypeString = "";
+        polygonTypeConfig.get("interpolation_polygon_type", polygonTypeString);
 
-    SECTION("test maximum nearest neighbour settings") {
-        std::stringstream test_stream;
-        interpolation.print(test_stream);
-        std::string test_string = test_stream.str();
-        EXPECT((test_string.find("max_fraction_elems_to_try: 0.4") != std::string::npos));
-    }
+        Interpolation interpolation(
+            option::type("finite-element") | util::Config("max_fraction_elems_to_try", 0.4) | polygonTypeConfig, fs,
+            pointcloud);
 
-    SECTION("test interpolation outputs") {
-        Field field_source = fs.createField<double>(option::name("source"));
-        Field field_target("target", array::make_datatype<double>(), array::make_shape(pointcloud.size()));
-
-        auto lonlat = array::make_view<double, 2>(fs.nodes().lonlat());
-        auto source = array::make_view<double, 1>(field_source);
-        for (idx_t j = 0; j < fs.nodes().size(); ++j) {
-            source(j) = func(lonlat(j, LON));
+        SECTION(polygonTypeString + ": test maximum nearest neighbour settings") {
+            std::stringstream test_stream;
+            interpolation.print(test_stream);
+            std::string test_string = test_stream.str();
+            EXPECT((test_string.find("max_fraction_elems_to_try: 0.4") != std::string::npos));
         }
 
-        interpolation.execute(field_source, field_target);
+        SECTION(polygonTypeString + ": test interpolation polygon type settings") {
+            std::stringstream test_stream;
+            interpolation.print(test_stream);
+            std::string test_string = test_stream.str();
+            EXPECT((test_string.find(polygonTypeString) != std::string::npos));
+        }
 
-        auto target = array::make_view<double, 1>(field_target);
+        SECTION(polygonTypeString + ": test interpolation outputs") {
+            Field field_source = fs.createField<double>(option::name("source"));
+            Field field_target("target", array::make_datatype<double>(), array::make_shape(pointcloud.size()));
 
-        auto check = std::vector<double>{func(00.), func(10.), func(20.), func(30.), func(40.),
-                                         func(50.), func(60.), func(70.), func(80.), func(90.)};
+            auto lonlat = array::make_view<double, 2>(fs.nodes().lonlat());
+            auto source = array::make_view<double, 1>(field_source);
+            for (idx_t j = 0; j < fs.nodes().size(); ++j) {
+                source(j) = func(lonlat(j, LON));
+            }
 
-        for (idx_t j = 0; j < pointcloud.size(); ++j) {
-            static double interpolation_tolerance = 1.e-4;
-            Log::info() << target(j) << "  " << check[j] << std::endl;
-            EXPECT(eckit::types::is_approximately_equal(target(j), check[j], interpolation_tolerance));
+            interpolation.execute(field_source, field_target);
+
+            auto target = array::make_view<double, 1>(field_target);
+
+            auto check = std::vector<double>{func(00.), func(10.), func(20.), func(30.), func(40.),
+                                             func(50.), func(60.), func(70.), func(80.), func(90.)};
+
+            for (idx_t j = 0; j < pointcloud.size(); ++j) {
+                static double interpolation_tolerance = 1.e-4;
+                Log::info() << target(j) << "  " << check[j] << std::endl;
+                EXPECT(eckit::types::is_approximately_equal(target(j), check[j], interpolation_tolerance));
+            }
         }
     }
 }
@@ -86,47 +122,56 @@ CASE("test_interpolation_finite_element_from_healpix") {
     NodeColumns fs(mesh);
 
     // Some points at the equator
-    PointCloud pointcloud(
-        {{15., 90.-0.001},{15.,-90+0.001}});
+    PointCloud pointcloud({{15., 90. - 0.001}, {15., -90 + 0.001}});
 
     auto func = [](double x) -> double { return std::sin(x * M_PI / 180.); };
 
-    Interpolation interpolation(option::type("finite-element") | util::Config("max_fraction_elems_to_try", 0.4), fs,
-                                pointcloud);
+    for (util::Config polygonTypeConfig : polygonTypes) {
+        std::string polygonTypeString = "";
+        polygonTypeConfig.get("interpolation_polygon_type", polygonTypeString);
 
-    SECTION("test maximum nearest neighbour settings") {
-        std::stringstream test_stream;
-        interpolation.print(test_stream);
-        std::string test_string = test_stream.str();
-        EXPECT((test_string.find("max_fraction_elems_to_try: 0.4") != std::string::npos));
-    }
+        Interpolation interpolationSMV(
+            option::type("finite-element") | util::Config("max_fraction_elems_to_try", 0.4) | polygonTypeConfig, fs,
+            pointcloud);
 
-    SECTION("test interpolation outputs") {
-        Field field_source = fs.createField<double>(option::name("source"));
-        Field field_target("target", array::make_datatype<double>(), array::make_shape(pointcloud.size()));
-
-        auto lonlat = array::make_view<double, 2>(fs.nodes().lonlat());
-        auto source = array::make_view<double, 1>(field_source);
-        for (idx_t j = 0; j < fs.nodes().size(); ++j) {
-            source(j) = func(lonlat(j, LON));
+        SECTION(polygonTypeString + ": test maximum nearest neighbour settings") {
+            std::stringstream test_stream;
+            interpolationSMV.print(test_stream);
+            std::string test_string = test_stream.str();
+            EXPECT((test_string.find("max_fraction_elems_to_try: 0.4") != std::string::npos));
         }
 
-        interpolation.execute(field_source, field_target);
+        SECTION(polygonTypeString + ": test interpolation polygon type settings") {
+            std::stringstream test_stream;
+            interpolationSMV.print(test_stream);
+            std::string test_string = test_stream.str();
+            EXPECT((test_string.find(polygonTypeString) != std::string::npos));
+        }
 
-        auto target = array::make_view<double, 1>(field_target);
+        SECTION(polygonTypeString + ": test interpolation outputs") {
+            Field field_source = fs.createField<double>(option::name("source"));
+            Field field_target("target", array::make_datatype<double>(), array::make_shape(pointcloud.size()));
 
-        auto check = std::vector<double>{0.998782444936, 0.998678866237};
+            auto lonlat = array::make_view<double, 2>(fs.nodes().lonlat());
+            auto source = array::make_view<double, 1>(field_source);
+            for (idx_t j = 0; j < fs.nodes().size(); ++j) {
+                source(j) = func(lonlat(j, LON));
+            }
 
-        for (idx_t j = 0; j < pointcloud.size(); ++j) {
-            static double interpolation_tolerance = 1.e-4;
-            Log::info() << target(j) << "  " << check[j] << std::endl;
-            EXPECT_APPROX_EQ(target(j), check[j], interpolation_tolerance);
+            interpolationSMV.execute(field_source, field_target);
+
+            auto target = array::make_view<double, 1>(field_target);
+
+            auto check = std::vector<double>{0.998782444936, 0.998678866237};
+
+            for (idx_t j = 0; j < pointcloud.size(); ++j) {
+                static double interpolation_tolerance = 1.e-4;
+                Log::info() << target(j) << "  " << check[j] << std::endl;
+                EXPECT_APPROX_EQ(target(j), check[j], interpolation_tolerance);
+            }
         }
     }
 }
-
-//-----------------------------------------------------------------------------
-
 
 
 }  // namespace test

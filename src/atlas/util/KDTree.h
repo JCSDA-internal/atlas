@@ -47,6 +47,15 @@ namespace util {
 /// @endcode
 /// The variable `neighbours` is now a container of indices (the payloads) of the 4 nearest points
 
+// #define ATLAS_HAVE_NANOFLANN 1
+#ifdef ATLAS_HAVE_NANOFLANN
+template <typename PayloadT, typename PointT>
+using DefaultTreeImpl = detail::KDTreeNanoflann<PayloadT, PointT>;
+#else
+template <typename PayloadT, typename PointT>
+using DefaultTreeImpl = detail::KDTreeMemory<PayloadT, PointT>;
+#endif
+
 template <typename PayloadT, typename PointT = Point3>
 class KDTree : public ObjectHandle<detail::KDTreeBase<PayloadT, PointT>> {
 public:
@@ -66,10 +75,10 @@ public:
     // Constructors
 
     /// @brief Construct an empty kd-tree with default geometry (Earth)
-    KDTree(): Handle(new detail::KDTreeMemory<Payload, Point>()) {}
+    KDTree(): Handle(new DefaultTreeImpl<Payload, Point>()) {}
 
     /// @brief Construct an empty kd-tree with custom geometry
-    KDTree(const Geometry& geometry): Handle(new detail::KDTreeMemory<Payload, Point>(geometry)) {}
+    KDTree(const Geometry& geometry): Handle(new DefaultTreeImpl<Payload, Point>(geometry)) {}
 
     /// @brief Construct an empty kd-tree with custom geometry
     KDTree(const eckit::Configuration& config):

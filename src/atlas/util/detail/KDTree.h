@@ -468,8 +468,8 @@ private:
     ValueTy value_;
 };
 
-// Note - KDTree_nanoflann is currently designed as an alternative to KDTreeMemory,
-// but would probably be better as an alternative to KDTree_eckit. It can be used
+// Note - KDTree_nanoflann is currently designed as an alternative to eckit::KDTreeMemory,
+// but I wonder if it would be better as an alternative to atlas::detail::KDTree_eckit? It can be used
 // in its current form as follows:
 // ```
 // auto nanoflann_kdtree_ = std::make_shared<

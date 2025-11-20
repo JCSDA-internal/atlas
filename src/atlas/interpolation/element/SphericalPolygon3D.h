@@ -49,7 +49,7 @@ public:
     double area() const {
         Vector3D prePolygonArea{0, 0, 0};
         for (const Vector3D& normal : greatCircleNormals) {
-            prePolygonArea += normal;
+            prePolygonArea = prePolygonArea + normal;
         }
         return 0.5 * prePolygonArea.norm();
     }

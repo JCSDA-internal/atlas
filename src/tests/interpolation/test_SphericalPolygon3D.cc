@@ -12,7 +12,6 @@
 #include "atlas/interpolation/Vector3D.h"
 #include "atlas/interpolation/element/SphericalPolygon3D.h"
 #include "eckit/types/FloatCompare.h"
-#include "eigen3/Eigen/src/Core/Matrix.h"
 #include "tests/AtlasTestEnvironment.h"
 
 using atlas::interpolation::Vector3D;
@@ -221,8 +220,6 @@ CASE("test_spherical_polygon_nonplanar_quad") {
     const size_t expectedInside  = 8;
     const size_t expectedOutside = numberTestPoints - expectedInside;
 
-    std::array<Vector4d, expectedInside> polygonWeightsVector;
-
     SECTION("test great circle normals") {
         double recipRoot6 = recipRoot2 * recipRoot3;
 
@@ -243,6 +240,7 @@ CASE("test_spherical_polygon_nonplanar_quad") {
     }
 
     SECTION("test intersection and weight computation") {
+        // Test non-planar polygon
         const double edgeEpsilon = parametricEpsilon * sqrt(testQuadArea);
 
         std::array<Vector4d, numberTestPoints> candidateWeights = {
@@ -261,6 +259,7 @@ CASE("test_spherical_polygon_nonplanar_quad") {
 
         size_t pointsInside  = 0;
         size_t pointsOutside = 0;
+        std::array<Vector4d, expectedInside> polygonWeightsVector;
 
         for (size_t i = 0; i < numberTestPoints; ++i) {
             std::optional<std::array<double, 4>> polygonWeights =
@@ -280,21 +279,20 @@ CASE("test_spherical_polygon_nonplanar_quad") {
         Log::info() << "Points in/out: " << pointsInside << "/" << pointsOutside << std::endl;
         EXPECT(pointsOutside == expectedOutside);
         EXPECT(pointsInside == expectedInside);
-    }
 
-    SECTION("test rotational consistency") {
+        // Test whether rotated polygon gives the same weights
         const std::array<const Vector3D, 4> testQuadRotatedVertices = {
             Vector3D{recipRoot2, 0, recipRoot2}, Vector3D{1, 0, 0}, Vector3D{recipRoot2, recipRoot2, 0},
             Vector3D{recipRoot3, recipRoot3, recipRoot3}};
 
         SphericalPolygon3D<4> testQuadRotated(testQuadRotatedVertices);
-        double testQuadRotatedArea = testQuadRotated.area();
-        const double edgeEpsilon   = parametricEpsilon * sqrt(testQuadRotatedArea);
-        size_t pointsInsideRotated = 0;
+        double testQuadRotatedArea      = testQuadRotated.area();
+        const double edgeEpsilonRotated = parametricEpsilon * sqrt(testQuadRotatedArea);
+        size_t pointsInsideRotated      = 0;
 
         for (size_t i = 0; i < numberTestPoints; ++i) {
             std::optional<std::array<double, 4>> polygonWeightsRotated =
-                testQuad.computeWeights(candidatePoints[i], edgeEpsilon);
+                testQuad.computeWeights(candidatePoints[i], edgeEpsilonRotated);
             if (!polygonWeightsRotated) {
                 EXPECT((isPointInside[i] == 0));
             }
@@ -302,7 +300,7 @@ CASE("test_spherical_polygon_nonplanar_quad") {
                 EXPECT((isPointInside[i] == 1));
                 Vector4d polygonWeightsVectorRotated((*polygonWeightsRotated)[0], (*polygonWeightsRotated)[1],
                                                      (*polygonWeightsRotated)[2], (*polygonWeightsRotated)[3]);
-                EXPECT(polygonWeightsVector[pointsInsideRotated].isApprox(polygonWeightsVectorRotated, relative_error));
+                EXPECT_EQ(polygonWeightsVector[pointsInsideRotated], polygonWeightsVectorRotated);
                 pointsInsideRotated += 1;
             }
         }

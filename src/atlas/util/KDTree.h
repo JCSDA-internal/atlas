@@ -50,7 +50,7 @@ namespace util {
 // #define ATLAS_HAVE_NANOFLANN 1
 #ifdef ATLAS_HAVE_NANOFLANN
 template <typename PayloadT, typename PointT>
-using DefaultTreeImpl = detail::KDTreeNanoflann<PayloadT, PointT>;
+using DefaultTreeImpl = detail::KDTree_nanoflann<PayloadT, PointT>;
 #else
 template <typename PayloadT, typename PointT>
 using DefaultTreeImpl = detail::KDTreeMemory<PayloadT, PointT>;

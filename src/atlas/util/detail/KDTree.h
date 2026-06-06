@@ -10,7 +10,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <iosfwd>
+#include <limits>
 #include <memory>
 
 #include "atlas/util/detail/nanoflann.hpp"
@@ -74,6 +76,8 @@ public:
 
     class ValueList : public std::vector<Value> {
     public:
+        ValueList() = default;
+
         PayloadList payloads() const {
             PayloadList list;
             list.reserve(this->size());
@@ -454,187 +458,149 @@ public:
     std::vector<ValueTy> pts;
 };
 
-template<typename ValueTy>
-class KDTree_nanoflann_node {
+// nanoflann is thread-safe for queries: https://github.com/jlblancoc/nanoflann/issues/54
+template <typename PayloadTy, typename PointTy = Point3>
+class KDTree_nanoflann : public KDTreeBase<PayloadTy, PointTy> {
 public:
-    KDTree_nanoflann_node(const ValueTy& value) : value_(value) {}
+    using Base      = KDTreeBase<PayloadTy, PointTy>;
+    using Payload   = typename Base::Payload;
+    using Point     = typename Base::Point;
+    using Value     = typename Base::Value;
+    using ValueList = typename Base::ValueList;
 
-    const ValueTy& value() const { return value_; }
-    auto point() const { return value_.point(); }
-    auto payload() const { return value_.payload(); }
-    double distance() const { return value_.distance(); }
-
-private:
-    ValueTy value_;
-};
-
-// Note - KDTree_nanoflann is currently designed as an alternative to eckit::KDTreeMemory,
-// but I wonder if it would be better as an alternative to atlas::detail::KDTree_eckit? It can be used
-// in its current form as follows:
-// ```
-// auto nanoflann_kdtree_ = std::make_shared<
-//   util::detail::KDTree_nanoflann<atlas::idx_t, eckit::geometry::Point3>>();
-//
-// atlas::util::IndexKDTree atlas_kdtree_wrapper_{nanoflann_kdtree_, atlas::util::Geometry{}};
-// ```
-// Note - this implementation is working but should be considered a draft.
-// Note - nanoflann is thread-safe for queries (https://github.com/jlblancoc/nanoflann/issues/54)
-template <typename PayloadTy, typename PointTy = eckit::geometry::Point3>
-class KDTree_nanoflann {
-public:
-    using Interface = atlas::util::detail::KDTreeBase<PayloadTy, PointTy>;
-    using Payload = PayloadTy;
-    using Point = PointTy;
-    using Value = typename Interface::Value;
-    using ValueList = typename Interface::ValueList;
-    using DataSetAdaptor = ValueListAdaptor<Value>;
     constexpr static int DIMS = Point::DIMS;
-    using Node = KDTree_nanoflann_node<Value>;
-    using NodeList = std::vector<Node>;
 
-    using Tree = nanoflann::KDTreeSingleIndexAdaptor<
-        nanoflann::L2_Simple_Adaptor<double, DataSetAdaptor>,
-        DataSetAdaptor,
-        DIMS
-    >;
+    using DataSetAdaptor = ValueListAdaptor<Value>;
+    using NanoflannTree  = nanoflann::KDTreeSingleIndexAdaptor<
+        nanoflann::L2_Simple_Adaptor<double, DataSetAdaptor>, DataSetAdaptor, DIMS>;
 
-private:
-    DataSetAdaptor dataset_;
-    std::shared_ptr<Tree> index_;
+    KDTree_nanoflann() = default;
+    KDTree_nanoflann(const Geometry& geometry) : Base(geometry) {}
 
-public:
-    KDTree_nanoflann() {}
-
-    KDTree_nanoflann(const std::shared_ptr<Tree>& tree): index_(tree) {}
-
-    using iterator = typename std::vector<Value>::iterator;
-    using const_iterator = typename std::vector<Value>::const_iterator;
-    iterator begin() { return dataset_.pts.begin(); }
-    iterator end() { return dataset_.pts.end(); }
-    const_iterator begin() const { return dataset_.pts.begin(); }
-    const_iterator end() const { return dataset_.pts.end(); }
-
-    atlas::idx_t size() const { 
-        return static_cast<atlas::idx_t>(dataset_.pts.size()); 
+    // Includes both built points and pending (pre-build) inserts.
+    idx_t size() const override {
+        return static_cast<idx_t>(dataset_.pts.size() + pending_.size());
     }
 
-    void build() {
-        if (!dataset_.pts.empty()) {
-            index_ = std::make_shared<Tree>(
-                DIMS, dataset_, nanoflann::KDTreeSingleIndexAdaptorParams(10 /* max leaf */)
-            );
-            index_->buildIndex();
-        } else {
-            index_.reset();
+    size_t footprint() const override { return dataset_.pts.size() * sizeof(Value); }
+
+    // Primes deferred-build mode: subsequent inserts queue in pending_ until build() is called.
+    void reserve(idx_t n) override { pending_.reserve(static_cast<size_t>(n)); }
+
+    void insert(const Value& value) override {
+        if (pending_.capacity() > 0) {
+            // Deferred mode (reserve was called): queue until build().
+            pending_.emplace_back(value.point(), value.payload());
         }
-    }
-    
-    void build(std::vector<Value>& values) {
-        dataset_.pts.clear();
-        dataset_.pts.reserve(values.size());
-        
-        for (const auto& value : values) {
+        else {
+            // Immediate mode (no reserve): rebuild after each insert, always queryable.
             dataset_.pts.emplace_back(value.point(), value.payload());
+            rebuild_index();
         }
-        
-        build();
     }
 
-    template<typename Iterator>
-    void build(Iterator begin, Iterator end) {
-        dataset_.pts.clear();
-        dataset_.pts.reserve(std::distance(begin, end));
-        for (auto it = begin; it != end; ++it) {
-            const auto& value = *it;
-            dataset_.pts.emplace_back(value.point(), value.payload());
-        }
-        build();
+    void build() override {
+        dataset_.pts.insert(dataset_.pts.end(), pending_.begin(), pending_.end());
+        pending_.clear();
+        pending_.shrink_to_fit();  // capacity → 0, exits deferred mode
+        rebuild_index();
     }
 
-    /// @brief Insert 3D cartesian point (x,y,z)
-    /// If memory has been reserved with reserve(), insertion will be delayed until build() is called.
-    void insert(const Value& value) {
-        // Insert immediately and rebuild index
-        dataset_.pts.emplace_back(value.point(), value.payload());
-        build();
+    void build(std::vector<Value>& values) override {
+        pending_.clear();
+        pending_.shrink_to_fit();
+        dataset_.pts.assign(values.begin(), values.end());
+        rebuild_index();
     }
 
-    /// @brief Find k nearest neighbours given a 3D cartesian point (x,y,z)
-    NodeList kNearestNeighbours(const Point& query_point, size_t k) const {
-        if (!index_) {
-            throw_AssertionFailed("KDTree was used before calling build()");
+    ValueList do_closestPoints(const Point& query, size_t k) const override {
+        assert_built();
+        if (!index_ || k == 0) {
+            return ValueList();
         }
+
+        k = std::min(k, dataset_.pts.size());
 
         double query_pt[DIMS];
         for (int i = 0; i < DIMS; ++i) {
-            query_pt[i] = query_point[i];
+            query_pt[i] = query[i];
         }
 
         std::vector<size_t> ret_indexes(k);
         std::vector<double> out_dists_sqr(k);
-        
         nanoflann::KNNResultSet<double> resultSet(k);
         resultSet.init(ret_indexes.data(), out_dists_sqr.data());
-        
-        bool found_k_neighbors = index_->findNeighbors(resultSet, query_pt);
-        if (size() >= k && !found_k_neighbors) {
-            throw_AssertionFailed("KDTree::kNearestNeighbours: not enough neighbors found");
-        }
-        
-        std::vector<Node> results;
-        results.reserve(k);
+        index_->findNeighbors(resultSet, query_pt);
 
-        for (size_t i = 0; i < k; ++i) {
-            const auto& value = dataset_.pts[ret_indexes[i]];
-            results.emplace_back(Value{value.point(), value.payload(), std::sqrt(out_dists_sqr[i])});
+        size_t found = resultSet.size();
+        ValueList results;
+        results.reserve(found);
+        for (size_t i = 0; i < found; ++i) {
+            const auto& v = dataset_.pts[ret_indexes[i]];
+            results.emplace_back(Value{v.point(), v.payload(), std::sqrt(out_dists_sqr[i])});
         }
-
-        return NodeList{results};
+        return results;
     }
 
-    /// @brief Find nearest neighbour given a 3D cartesian point (x,y,z)
-    Node nearestNeighbour(const Point& query_point) const {
-        if (!index_) {
-            throw_AssertionFailed("KDTree was used before calling build()");
-        }
-        auto results = kNearestNeighbours(query_point, 1);
+    Value do_closestPoint(const Point& query) const override {
+        assert_built();
+        auto results = do_closestPoints(query, 1);
         if (results.empty()) {
-            // Return a default value if no points found
-            return Node{Value{query_point, Payload{}, std::numeric_limits<double>::max()}};
+            return Value{query, Payload{}, std::numeric_limits<double>::max()};
         }
         return results[0];
     }
 
-    /// @brief Find all points within a distance of given radius from a given point (x,y,z)
-    NodeList findInSphere(const Point& query_point, double radius) const {
+    ValueList do_closestPointsWithinRadius(const Point& query, double radius) const override {
+        assert_built();
         if (!index_) {
-            throw_AssertionFailed("KDTree was used before calling build()");
+            return ValueList();
         }
-        
-        double query_pt[3] = {query_point[0], query_point[1], query_point[2]};
-        double radius_sqr = radius * radius;
-        
+
+        double query_pt[DIMS];
+        for (int i = 0; i < DIMS; ++i) {
+            query_pt[i] = query[i];
+        }
+
         std::vector<nanoflann::ResultItem<size_t, double>> indices_dists;
-        nanoflann::RadiusResultSet<double, size_t> resultSet(radius_sqr, indices_dists);
-        
+        nanoflann::RadiusResultSet<double, size_t> resultSet(radius * radius, indices_dists);
         index_->findNeighbors(resultSet, query_pt);
-        
-        std::vector<Node> results;
+
+        ValueList results;
         results.reserve(indices_dists.size());
-        
         for (const auto& idx_dist : indices_dists) {
-            const auto& value = dataset_.pts[idx_dist.first];
-            results.emplace_back(Value{value.point(), value.payload(), std::sqrt(idx_dist.second)});
+            const auto& v = dataset_.pts[idx_dist.first];
+            results.emplace_back(Value{v.point(), v.payload(), std::sqrt(idx_dist.second)});
         }
-        
-        return NodeList{results};
+        std::sort(results.begin(), results.end(),
+                  [](const Value& a, const Value& b) { return a.distance() < b.distance(); });
+        return results;
     }
+
+private:
+    // Mirrors eckit's tmp_.capacity() sentinel: throws only when reserve() was called but
+    // build() has not yet been called, i.e. pending_ still holds unbuilt inserts.
+    void assert_built() const {
+        if (pending_.capacity() > 0) {
+            throw_AssertionFailed("KDTree_nanoflann was used before calling build()");
+        }
+    }
+
+    void rebuild_index() {
+        if (!dataset_.pts.empty()) {
+            index_ = std::make_shared<NanoflannTree>(
+                DIMS, dataset_, nanoflann::KDTreeSingleIndexAdaptorParams(10 /* max leaf */));
+            index_->buildIndex();
+        }
+        else {
+            index_.reset();
+        }
+    }
+
+    DataSetAdaptor dataset_;
+    std::vector<Value> pending_;
+    std::shared_ptr<NanoflannTree> index_;
 };
-
-//------------------------------------------------------------------------------------------------------
-
-template <typename Payload, typename Point>
-using KDTreeNanoflann = KDTree_eckit<KDTree_nanoflann<Payload, Point>>;
 
 //------------------------------------------------------------------------------------------------------
 

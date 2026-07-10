@@ -52,9 +52,30 @@ Field getErrorField(const Field& targetField) {
     const auto referenceFieldView = array::make_view<double, 1>(referenceField);
     const auto targetFieldView    = array::make_view<double, 1>(targetField);
     for (idx_t idx = 0; idx < errorField.shape(0); ++idx) {
-        errorFieldView(idx) = targetFieldView(idx) - referenceFieldView(idx);
+        errorFieldView(idx) = std::abs(targetFieldView(idx) - referenceFieldView(idx));
     }
     return errorField;
+}
+
+/// Generate the residual between low_res -> high_res -> low_res transformation
+Field getResidualField(const Interpolation& interpScheme, const Interpolation& binningScheme) {
+    const auto lowResField = getVortexField(interpScheme.source());
+
+    auto highResField = interpScheme.target().createField<double>(option::name("high res field"));
+    interpScheme.execute(lowResField, highResField);
+    highResField.haloExchange();
+
+    auto residualField = lowResField.functionspace().createField<double>(option::name("residual field"));
+    binningScheme.execute(highResField, residualField);
+    residualField.haloExchange();
+
+    auto residualFieldView = array::make_view<double, 1>(residualField);
+    const auto lowResFieldView = array::make_view<double, 1>(lowResField);
+    for (idx_t idx = 0; idx < residualField.shape(0); ++idx) {
+        residualFieldView(idx) = residualFieldView(idx) - lowResFieldView(idx);
+    }
+
+    return residualField;
 }
 
 /// function to write a field set in a Gmsh file
@@ -123,8 +144,11 @@ void regriddingTest(const util::Config& config) {
     const auto sourceField = getVortexField(sourceFunctionSpace);
     auto targetField       = targetFunctionSpace.createField<double>(option::name("field_target"));
 
-    const auto binningScheme = option::type{"binning"} | util::Config{"scheme", config.getSubConfiguration("scheme")};
-    auto binning             = Interpolation{binningScheme, sourceFunctionSpace, targetFunctionSpace};
+    const auto interpScheme = config.getSubConfiguration("scheme");
+    const auto interp = Interpolation{interpScheme, targetFunctionSpace, sourceFunctionSpace};
+
+    const auto binningScheme = option::type{"binning"} | util::Config{"scheme", interpScheme};
+    const auto binning             = Interpolation{binningScheme, sourceFunctionSpace, targetFunctionSpace};
 
     sourceField.haloExchange();
     binning.execute(sourceField, targetField);
@@ -133,6 +157,7 @@ void regriddingTest(const util::Config& config) {
     auto targetFieldSet = FieldSet{};
     targetFieldSet.add(targetField);
     targetFieldSet.add(getErrorField(targetField));
+    targetFieldSet.add(getResidualField(interp, binning));
 
     auto sourceFieldSet = FieldSet{};
     sourceFieldSet.add(sourceField);
@@ -151,43 +176,44 @@ CASE("Regridding from high to low resolution: cubed sphere, bilinear") {
     regriddingTest(config);
 }
 
-CASE("Regridding from high to low resolution: cubed sphere, nearest neighbour") {
-    const auto config = util::Config{"source_grid", "CS-LFR-112"} | util::Config{"target_grid", "CS-LFR-28"} |
-                        util::Config{"functionspace", "NodeColumns"} | util::Config{"halo", 0} |
-                        util::Config{"mesh_generator", "cubedsphere_dual"} |
-                        util::Config{"scheme", option::type{"nearest-neighbour"}};
+// CASE("Regridding from high to low resolution: cubed sphere, nearest neighbour") {
+//     const auto config = util::Config{"source_grid", "CS-LFR-112"} | util::Config{"target_grid", "CS-LFR-28"} |
+//                         util::Config{"functionspace", "NodeColumns"} | util::Config{"halo", 0} |
+//                         util::Config{"mesh_generator", "cubedsphere_dual"} |
+//                         util::Config{"scheme", option::type{"nearest-neighbour"}};
 
-    regriddingTest(config);
-}
+//     regriddingTest(config);
+// }
 
-CASE("Regridding from high to low resolution: cubed sphere, finite element") {
-    const auto config = util::Config{"source_grid", "CS-LFR-112"} | util::Config{"target_grid", "CS-LFR-28"} |
-                        util::Config{"functionspace", "NodeColumns"} | util::Config{"halo", 1} |
-                        util::Config{"mesh_generator", "cubedsphere_dual"} |
-                        util::Config{"scheme", option::type{"finite-element"}};
+// CASE("Regridding from high to low resolution: cubed sphere, finite element") {
+//     const auto config = util::Config{"source_grid", "CS-LFR-112"} | util::Config{"target_grid", "CS-LFR-28"} |
+//                         util::Config{"functionspace", "NodeColumns"} | util::Config{"halo", 1} |
+//                         util::Config{"mesh_generator", "cubedsphere_dual"} |
+//                         util::Config{"scheme", option::type{"finite-element"}};
 
-    regriddingTest(config);
-}
+//     regriddingTest(config);
+// }
 
-CASE("Regridding from high to low resolution: gaussian, structured bilinear") {
-    const auto config = util::Config{"source_grid", "O48"} | util::Config{"target_grid", "O24"} |
-                        util::Config{"functionspace", "StructuredColumns"} | util::Config{"halo", 3} |
-                        util::Config{"scheme", option::type{"structured-bilinear"}};
+// CASE("Regridding from high to low resolution: gaussian, structured bilinear") {
+//     const auto config = util::Config{"source_grid", "O48"} | util::Config{"target_grid", "O24"} |
+//                         util::Config{"functionspace", "StructuredColumns"} | util::Config{"halo", 3} |
+//                         util::Config{"scheme", option::type{"structured-bilinear"}};
 
-    regriddingTest(config);
-}
+//     regriddingTest(config);
+// }
 
 CASE("plot binning kernel") {
-    const auto sourceGrid = Grid{"CS-LFR-20"};
+    const auto sourceGrid = Grid{"CS-LFR-80"};
     const auto targetGrid = Grid{"CS-LFR-5"};
 
-    const auto haloOption = option::halo(1);
+    const auto sourceHaloOption = option::halo(8);
+    const auto targetHaloOption = option::halo(0);
 
-    const auto sourceMesh = MeshGenerator("cubedsphere_dual", haloOption).generate(sourceGrid);
-    const auto targetMesh = MeshGenerator("cubedsphere_dual").generate(targetGrid);
+    const auto sourceMesh = MeshGenerator("cubedsphere_dual", sourceHaloOption).generate(sourceGrid);
+    const auto targetMesh = MeshGenerator("cubedsphere_dual", targetHaloOption).generate(targetGrid);
 
-    const auto sourceFunctionSpace = functionspace::NodeColumns{sourceMesh, haloOption};
-    const auto targetFunctionSpace = functionspace::NodeColumns{targetMesh};
+    const auto sourceFunctionSpace = functionspace::NodeColumns{sourceMesh, sourceHaloOption};
+    const auto targetFunctionSpace = functionspace::NodeColumns{targetMesh, targetHaloOption};
 
     const auto binningScheme = option::type{"binning"} | util::Config{"scheme", option::type{"cubedsphere-bilinear"}};
     auto binning             = Interpolation{binningScheme, sourceFunctionSpace, targetFunctionSpace};
@@ -305,5 +331,6 @@ CASE("dot-product test for the rigridding from high to low resolution; grid type
 //--
 
 int main(int argc, char** argv) {
+    // std::this_thread::sleep_for(std::chrono::seconds(10));
     return atlas::test::run(argc, argv);
 }

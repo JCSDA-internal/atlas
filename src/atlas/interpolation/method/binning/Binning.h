@@ -67,7 +67,14 @@ class Binning : public Method {
   void do_setup(const Grid& source, const Grid& target, const Cache&) override;
   void do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache&) override;
 
-  SparseMatrixStorage transposeAndHaloExchange(const SparseMatrixView& interpMatrix) const;
+  SparseMatrixStorage cleanInterpMatrix(const SparseMatrixStorage& interpMatrix) const;
+  SparseMatrixStorage haloExchange(const SparseMatrixStorage& interpMatrix) const;
+  SparseMatrixStorage approxInverseTransform(const SparseMatrixStorage& interpMatrix) const;
+  SparseMatrixStorage normaliseRows(const SparseMatrixStorage& invInterpMatrix) const;
+
+
+
+
   std::vector<double> getAreaWeights() const;
 
   eckit::LocalConfiguration interpAncillaryScheme_{};

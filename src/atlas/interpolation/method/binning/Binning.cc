@@ -228,7 +228,7 @@ Binning::SparseMatrixStorage Binning::haloExchange(const Binning::SparseMatrixSt
     const auto make_global_to_local_map = [&](const Views& views) {
         auto global_to_local_map = std::map<PartRidxPair, idx_t>{};
         for (idx_t localIdx = 0; localIdx < views.partition.size(); ++localIdx) {
-            const auto part_ridx = PartRidxPair{views.partition(localIdx), views.remote_index(localIdx)};    
+            const auto part_ridx = PartRidxPair{views.partition(localIdx), views.remote_index(localIdx)};
             global_to_local_map.insert({part_ridx, localIdx});
         }
         return global_to_local_map;
@@ -255,16 +255,18 @@ Binning::SparseMatrixStorage Binning::haloExchange(const Binning::SparseMatrixSt
         for (std::size_t i = 0; i < row_buffer.size(); ++i) {
             const auto part_ridx_row = row_buffer[i];
             const auto part_ridx_col = col_buffer[i];
-            const auto weight   = value_buffer[i];
+            const auto weight        = value_buffer[i];
 
             const auto row_iter = target_global_to_local_map.find(part_ridx_row);
-            ATLAS_ASSERT_MSG(row_iter != target_global_to_local_map.end(),
-                             "Source local index not found for global index. Try increasing source functionspace halo size.");
+            ATLAS_ASSERT_MSG(
+                row_iter != target_global_to_local_map.end(),
+                "Source local index not found for global index. Try increasing source functionspace halo size.");
             const auto row = row_iter->second;
 
             const auto col_iter = source_global_to_local_map.find(part_ridx_col);
-            ATLAS_ASSERT_MSG(col_iter != source_global_to_local_map.end(),
-                             "Target local index not found for global index. Try increasing target functionspace halo size.");
+            ATLAS_ASSERT_MSG(
+                col_iter != source_global_to_local_map.end(),
+                "Target local index not found for global index. Try increasing target functionspace halo size.");
             const auto col = col_iter->second;
 
             triplets.emplace_back(row, col, weight);
@@ -370,7 +372,8 @@ Binning::SparseMatrixStorage Binning::approxInverseTransform(const Binning::Spar
         // Create a matrix from the row vectors
         const auto num_rows = static_cast<Eigen::Index>(row_vectors.size());
         const auto num_cols = static_cast<Eigen::Index>(col_indices.size());
-        Eigen::Matrix<Binning::ValueType, Eigen::Dynamic, Eigen::Dynamic> sub_matrix(num_rows, num_cols);
+        Eigen::Matrix<Binning::ValueType, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> sub_matrix(num_rows,
+                                                                                                      num_cols);
 
         for (Eigen::Index i = 0; i < num_rows; ++i) {
             for (Eigen::Index j = 0; j < num_cols; ++j) {
@@ -381,26 +384,25 @@ Binning::SparseMatrixStorage Binning::approxInverseTransform(const Binning::Spar
         // Compute the pseudoinverse of interpolation polygon using Eigen's complete orthogonal decomposition
         const auto poly_pseudoinverse = sub_matrix.completeOrthogonalDecomposition().pseudoInverse();
 
-        // Noramlise matrix by total energy
-        const auto norm = num_cols / poly_pseudoinverse.norm();
-
-        
-
         ATLAS_ASSERT(poly_pseudoinverse.rows() == num_cols, "Pseudoinverse rows do not match number of columns");
         ATLAS_ASSERT(poly_pseudoinverse.cols() == num_rows, "Pseudoinverse cols do not match number of rows");
 
         const auto target_ghost_view = array::make_view<int, 1>(target_.ghost());
 
         for (Eigen::Index i = 0; i < poly_pseudoinverse.rows(); ++i) {
-            for (Eigen::Index j = 0; j < poly_pseudoinverse.cols(); ++j) {
-                const auto value = poly_pseudoinverse(i, j);
+            const auto triplet_row = col_indices.at(i);
+            if (target_ghost_view(triplet_row)) {
+                continue;
+            }
 
-                const auto triplet_row = col_indices.at(i);
+            // Normalise by row RMS, to minimise total energy of pseudoinverse matrix.
+            const auto norm = std::sqrt(poly_pseudoinverse.rows()) / poly_pseudoinverse.row(i).norm();
+
+            for (Eigen::Index j = 0; j < poly_pseudoinverse.cols(); ++j) {
+                const auto value       = poly_pseudoinverse(i, j);
                 const auto triplet_col = row_indices.at(j);
 
-                if (!target_ghost_view(triplet_row)) {
-                    pseudoinverse_triplets.emplace_back(triplet_row, triplet_col, value * norm);
-                }
+                pseudoinverse_triplets.emplace_back(triplet_row, triplet_col, value * norm);
             }
         }
     }

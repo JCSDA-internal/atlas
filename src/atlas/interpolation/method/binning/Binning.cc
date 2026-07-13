@@ -41,43 +41,7 @@ namespace {
 MethodBuilder<Binning> __builder("binning");
 
 using TripletType = linalg::Triplet<Binning::ValueType, Binning::IndexType>;
-static_assert(std::is_trivially_copyable_v<TripletType>);
 
-class MpiBuffer {
-public:
-    MpiBuffer(): buffer_{mpi::comm().size()} {}
-
-    std::size_t size(std::size_t rank) const {
-        const auto n = buffer_.at(rank).size();
-        ATLAS_ASSERT(n % sizeof(TripletType) == 0, "Buffer size not a multiple of Triplet size");
-        return n / sizeof(TripletType);
-    }
-
-    void pushBack(std::size_t rank, const TripletType& triplet) {
-        auto& subBuffer                        = buffer_.at(rank);
-        alignas(TripletType) auto appendBuffer = std::array<char, sizeof(TripletType)>{};
-        std::memcpy(appendBuffer.data(), &triplet, sizeof(TripletType));
-        subBuffer.insert(subBuffer.end(), appendBuffer.begin(), appendBuffer.end());
-    }
-
-    auto get(std::size_t rank) const {
-        const auto& subBuffer = buffer_.at(rank);
-        return [&subBuffer](size_t index) -> TripletType {
-            TripletType triplet{};
-            std::memcpy(&triplet, subBuffer.data() + index * sizeof(TripletType), sizeof(TripletType));
-            return triplet;
-        };
-    }
-
-    MpiBuffer allToAll() const {
-        auto recvBuffer = MpiBuffer{};
-        mpi::comm().allToAll(buffer_, recvBuffer.buffer_);
-        return recvBuffer;
-    }
-
-private:
-    std::vector<std::vector<char>> buffer_{};
-};
 
 }  // namespace
 
@@ -122,47 +86,6 @@ void Binning::do_setup(const FunctionSpace& source, const FunctionSpace& target)
 
 void Binning::print(std::ostream&) const {
     ATLAS_NOTIMPLEMENTED;
-}
-
-
-Binning::SparseMatrixStorage Binning::cleanInterpMatrix(const Binning::SparseMatrixStorage& interpMatrix) const {
-    const auto interpMatrixView = linalg::make_host_view<ValueType, IndexType>(interpMatrix);
-
-    auto triplets = std::vector<TripletType>{};
-    triplets.reserve(interpMatrixView.nnz());
-
-    const auto targetGhostView     = array::make_view<int, 1>(target_.ghost());
-    const auto sourcePartitionView = array::make_view<int, 1>(source_.partition());
-    const auto sourceRidxView      = array::make_indexview<idx_t, 1>(source_.remote_index());
-
-    // Resolve (part, ridx) -> local index dengeneracy in source function space.
-    auto sourceRemoteToLocalMap = std::map<std::pair<int, idx_t>, idx_t>{};
-    for (idx_t localIdx = 0; localIdx < source_.size(); ++localIdx) {
-        const int part   = sourcePartitionView(localIdx);
-        const idx_t ridx = sourceRidxView(localIdx);
-        sourceRemoteToLocalMap.insert({{part, ridx}, localIdx});
-    }
-
-
-    // Remove rows that map to ghost elements in the target function space.
-    for (std::size_t rowIdx = 0; rowIdx < interpMatrixView.rows(); ++rowIdx) {
-        // Skip rows that map to ghost elements. They shouldn't be here.
-        if (targetGhostView(rowIdx)) {
-            continue;
-        }
-
-        linalg::sparse_matrix_for_each_row(rowIdx, interpMatrixView,
-                                           [&](IndexType row, IndexType col, ValueType value) {
-                                               const int part   = sourcePartitionView(col);
-                                               const idx_t ridx = sourceRidxView(col);
-
-                                               const auto lidx = sourceRemoteToLocalMap.at({part, ridx});
-                                               triplets.emplace_back(row, lidx, value);
-                                           });
-    }
-
-    return linalg::make_sparse_matrix_storage_from_triplets(static_cast<IndexType>(source_.size()),
-                                                            static_cast<IndexType>(target_.size()), triplets);
 }
 
 Binning::SparseMatrixStorage Binning::haloExchange(const Binning::SparseMatrixStorage& interpMatrix) const {
@@ -278,136 +201,136 @@ Binning::SparseMatrixStorage Binning::haloExchange(const Binning::SparseMatrixSt
                                                             static_cast<IndexType>(interpSource.size()), triplets);
 }
 
-// Binning::SparseMatrixStorage Binning::approxInverseTransform(const Binning::SparseMatrixStorage& interpMatrix) const {
-//     const auto interpMatrixView = linalg::make_host_view<ValueType, IndexType>(interpMatrix);
-
-//     auto triplets = std::vector<TripletType>{};
-//     triplets.reserve(interpMatrixView.nnz());
-
-//     const auto areaWeights = getAreaWeights();
-
-//     // Approximate inverse transform by transposing the interpolation matrix.
-//     linalg::sparse_matrix_for_each(interpMatrixView, [&](IndexType row, IndexType col, ValueType weight) {
-//         triplets.emplace_back(col, row, weight * areaWeights.at(col));
-//     });
-
-//     return linalg::make_sparse_matrix_storage_from_triplets(static_cast<IndexType>(target_.size()),
-//                                                             static_cast<IndexType>(source_.size()), triplets);
-
-// }
-
 Binning::SparseMatrixStorage Binning::approxInverseTransform(const Binning::SparseMatrixStorage& interpMatrix) const {
     const auto interpMatrixView = linalg::make_host_view<ValueType, IndexType>(interpMatrix);
 
     auto triplets = std::vector<TripletType>{};
     triplets.reserve(interpMatrixView.nnz());
 
-    using Value         = Binning::ValueType;
-    using ColIndex      = Binning::IndexType;
-    using ColIndices    = std::vector<ColIndex>;
-    using RowVectorData = std::array<Binning::ValueType, 4>;
-    using RowIndex      = Binning::IndexType;
-    using RowVector     = std::pair<RowIndex, RowVectorData>;
-    using RowVectors    = std::vector<RowVector>;
-    using RowVectorMap  = std::map<ColIndices, RowVectors>;
+    const auto areaWeights = getAreaWeights();
 
-    // Store a map of accumulated row-vectors, keyed by vector of sorted column indices.
-    auto row_vector_map = RowVectorMap{};
+    // Approximate inverse transform by transposing the interpolation matrix.
+    linalg::sparse_matrix_for_each(interpMatrixView, [&](IndexType row, IndexType col, ValueType weight) {
+        triplets.emplace_back(col, row, weight * areaWeights.at(col));
+    });
 
-    for (std::size_t row_idx = 0; row_idx < interpMatrixView.rows(); ++row_idx) {
-        // use a std::map to order columns by index and accumulate values for duplicate columns
-        using RowMap = std::map<ColIndex, Value>;
-        auto row_map = RowMap{};
+    return linalg::make_sparse_matrix_storage_from_triplets(static_cast<IndexType>(target_.size()),
+                                                            static_cast<IndexType>(source_.size()), triplets);
 
-        linalg::sparse_matrix_for_each_row(row_idx, interpMatrixView,
-                                           [&](RowIndex, ColIndex col, Value value) { row_map[col] += value; });
-
-        if (row_map.empty()) {
-            continue;
-        }
-
-        if (row_map.size() > 4 || row_map.size() < 3) {
-            // print row, col, value
-            for (const auto& [col, value] : row_map) {
-                std::cout << "Row: " << row_idx << ", Col: " << col << ", Value: " << value << std::endl;
-            }
-
-            ATLAS_ASSERT(false, "Row " + std::to_string(row_idx) + " has " + std::to_string(row_map.size()) +
-                                    " non-zero entries. Expected between 3 and 4.");
-        }
-
-
-        // Make sure no more that 4 non-zero entries in a row.
-        ATLAS_ASSERT(row_map.size() <= 4, "Row " + std::to_string(row_idx) + " has more than 4 non-zero entries");
-
-        // Make sure there are at least 3 non-zero entries in a row.
-        ATLAS_ASSERT(row_map.size() >= 3, "Row " + std::to_string(row_idx) + " has less than 3 non-zero entries");
-
-
-        // Extract column indices and values from the row_map
-        auto col_indices = ColIndices{};
-        col_indices.reserve(row_map.size());
-        std::transform(row_map.begin(), row_map.end(), std::back_inserter(col_indices),
-                       [](const auto& pair) { return pair.first; });
-
-        auto row_vector_data = RowVectorData{};
-        std::transform(row_map.begin(), row_map.end(), row_vector_data.data(),
-                       [](const auto& pair) { return pair.second; });
-
-        row_vector_map[col_indices].emplace_back(static_cast<RowIndex>(row_idx), row_vector_data);
-    }
-
-    auto pseudoinverse_triplets = std::vector<linalg::Triplet<Value, Binning::IndexType>>{};
-    pseudoinverse_triplets.reserve(interpMatrixView.nnz());
-
-    // Now calculate the pseudo-inverse for each unique set of column indices and accumulate the triplets.
-    for (const auto& [col_indices, row_vectors] : row_vector_map) {
-        // Get row indices:
-        auto row_indices = std::vector<RowIndex>{};
-        row_indices.reserve(row_vectors.size());
-        std::transform(row_vectors.begin(), row_vectors.end(), std::back_inserter(row_indices),
-                       [](const auto& pair) { return pair.first; });
-
-
-        // Create a matrix from the row vectors
-        const auto num_rows = static_cast<Eigen::Index>(row_vectors.size());
-        const auto num_cols = static_cast<Eigen::Index>(col_indices.size());
-        Eigen::Matrix<Binning::ValueType, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> sub_matrix(num_rows,
-                                                                                                      num_cols);
-
-        for (Eigen::Index i = 0; i < num_rows; ++i) {
-            for (Eigen::Index j = 0; j < num_cols; ++j) {
-                sub_matrix(i, j) = row_vectors.at(i).second.at(j);
-            }
-        }
-
-        // Compute the pseudoinverse of interpolation polygon using Eigen's complete orthogonal decomposition
-        const auto poly_pseudoinverse = sub_matrix.completeOrthogonalDecomposition().pseudoInverse();
-
-        ATLAS_ASSERT(poly_pseudoinverse.rows() == num_cols, "Pseudoinverse rows do not match number of columns");
-        ATLAS_ASSERT(poly_pseudoinverse.cols() == num_rows, "Pseudoinverse cols do not match number of rows");
-
-        const auto target_ghost_view = array::make_view<int, 1>(target_.ghost());
-
-        for (Eigen::Index i = 0; i < poly_pseudoinverse.rows(); ++i) {
-            const auto triplet_row = col_indices.at(i);
-            if (target_ghost_view(triplet_row)) {
-                continue;
-            }
-
-            // Normalise by row RMS, to minimise total energy of pseudoinverse matrix.
-            const auto norm = std::sqrt(poly_pseudoinverse.rows()) / poly_pseudoinverse.row(i).norm();
-
-            for (Eigen::Index j = 0; j < poly_pseudoinverse.cols(); ++j) {
-                const auto value       = poly_pseudoinverse(i, j);
-                const auto triplet_col = row_indices.at(j);
-
-                pseudoinverse_triplets.emplace_back(triplet_row, triplet_col, value * norm);
-            }
-        }
-    }
-    return linalg::make_sparse_matrix_storage_from_triplets(target_.size(), source_.size(), pseudoinverse_triplets);
 }
+
+// Binning::SparseMatrixStorage Binning::approxInverseTransform(const Binning::SparseMatrixStorage& interpMatrix) const {
+//     const auto interpMatrixView = linalg::make_host_view<ValueType, IndexType>(interpMatrix);
+
+//     auto triplets = std::vector<TripletType>{};
+//     triplets.reserve(interpMatrixView.nnz());
+
+//     using Value         = Binning::ValueType;
+//     using ColIndex      = Binning::IndexType;
+//     using ColIndices    = std::vector<ColIndex>;
+//     using RowVectorData = std::array<Binning::ValueType, 4>;
+//     using RowIndex      = Binning::IndexType;
+//     using RowVector     = std::pair<RowIndex, RowVectorData>;
+//     using RowVectors    = std::vector<RowVector>;
+//     using RowVectorMap  = std::map<ColIndices, RowVectors>;
+
+//     // Store a map of accumulated row-vectors, keyed by vector of sorted column indices.
+//     auto row_vector_map = RowVectorMap{};
+
+//     for (std::size_t row_idx = 0; row_idx < interpMatrixView.rows(); ++row_idx) {
+//         // use a std::map to order columns by index and accumulate values for duplicate columns
+//         using RowMap = std::map<ColIndex, Value>;
+//         auto row_map = RowMap{};
+
+//         linalg::sparse_matrix_for_each_row(row_idx, interpMatrixView,
+//                                            [&](RowIndex, ColIndex col, Value value) { row_map[col] += value; });
+
+//         if (row_map.empty()) {
+//             continue;
+//         }
+
+//         if (row_map.size() > 4 || row_map.size() < 3) {
+//             // print row, col, value
+//             for (const auto& [col, value] : row_map) {
+//                 std::cout << "Row: " << row_idx << ", Col: " << col << ", Value: " << value << std::endl;
+//             }
+
+//             ATLAS_ASSERT(false, "Row " + std::to_string(row_idx) + " has " + std::to_string(row_map.size()) +
+//                                     " non-zero entries. Expected between 3 and 4.");
+//         }
+
+
+//         // Make sure no more that 4 non-zero entries in a row.
+//         ATLAS_ASSERT(row_map.size() <= 4, "Row " + std::to_string(row_idx) + " has more than 4 non-zero entries");
+
+//         // Make sure there are at least 3 non-zero entries in a row.
+//         ATLAS_ASSERT(row_map.size() >= 3, "Row " + std::to_string(row_idx) + " has less than 3 non-zero entries");
+
+
+//         // Extract column indices and values from the row_map
+//         auto col_indices = ColIndices{};
+//         col_indices.reserve(row_map.size());
+//         std::transform(row_map.begin(), row_map.end(), std::back_inserter(col_indices),
+//                        [](const auto& pair) { return pair.first; });
+
+//         auto row_vector_data = RowVectorData{};
+//         std::transform(row_map.begin(), row_map.end(), row_vector_data.data(),
+//                        [](const auto& pair) { return pair.second; });
+
+//         row_vector_map[col_indices].emplace_back(static_cast<RowIndex>(row_idx), row_vector_data);
+//     }
+
+//     auto pseudoinverse_triplets = std::vector<linalg::Triplet<Value, Binning::IndexType>>{};
+//     pseudoinverse_triplets.reserve(interpMatrixView.nnz());
+
+//     // Now calculate the pseudo-inverse for each unique set of column indices and accumulate the triplets.
+//     for (const auto& [col_indices, row_vectors] : row_vector_map) {
+//         // Get row indices:
+//         auto row_indices = std::vector<RowIndex>{};
+//         row_indices.reserve(row_vectors.size());
+//         std::transform(row_vectors.begin(), row_vectors.end(), std::back_inserter(row_indices),
+//                        [](const auto& pair) { return pair.first; });
+
+
+//         // Create a matrix from the row vectors
+//         const auto num_rows = static_cast<Eigen::Index>(row_vectors.size());
+//         const auto num_cols = static_cast<Eigen::Index>(col_indices.size());
+//         Eigen::Matrix<Binning::ValueType, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> sub_matrix(num_rows,
+//                                                                                                       num_cols);
+
+//         for (Eigen::Index i = 0; i < num_rows; ++i) {
+//             for (Eigen::Index j = 0; j < num_cols; ++j) {
+//                 sub_matrix(i, j) = row_vectors.at(i).second.at(j);
+//             }
+//         }
+
+//         // Compute the pseudoinverse of interpolation polygon using Eigen's complete orthogonal decomposition
+//         const auto poly_pseudoinverse = sub_matrix.completeOrthogonalDecomposition().pseudoInverse();
+
+//         ATLAS_ASSERT(poly_pseudoinverse.rows() == num_cols, "Pseudoinverse rows do not match number of columns");
+//         ATLAS_ASSERT(poly_pseudoinverse.cols() == num_rows, "Pseudoinverse cols do not match number of rows");
+
+//         const auto target_ghost_view = array::make_view<int, 1>(target_.ghost());
+
+//         for (Eigen::Index i = 0; i < poly_pseudoinverse.rows(); ++i) {
+//             const auto triplet_row = col_indices.at(i);
+//             if (target_ghost_view(triplet_row)) {
+//                 continue;
+//             }
+
+//             // Normalise by row RMS, to minimise total energy of pseudoinverse matrix.
+//             const auto norm = std::sqrt(poly_pseudoinverse.rows()) / poly_pseudoinverse.row(i).norm();
+
+//             for (Eigen::Index j = 0; j < poly_pseudoinverse.cols(); ++j) {
+//                 const auto value       = poly_pseudoinverse(i, j);
+//                 const auto triplet_col = row_indices.at(j);
+
+//                 pseudoinverse_triplets.emplace_back(triplet_row, triplet_col, value * norm);
+//             }
+//         }
+//     }
+//     return linalg::make_sparse_matrix_storage_from_triplets(target_.size(), source_.size(), pseudoinverse_triplets);
+// }
 
 Binning::SparseMatrixStorage Binning::normaliseRows(const Binning::SparseMatrixStorage& invInterpMatrix) const {
     const auto interpMatrixView = linalg::make_host_view<ValueType, IndexType>(invInterpMatrix);

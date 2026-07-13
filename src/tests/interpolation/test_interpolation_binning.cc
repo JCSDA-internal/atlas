@@ -171,7 +171,7 @@ CASE("Regridding from high to low resolution: cubed sphere, bilinear") {
     const auto config = util::Config{"source_grid", "CS-LFR-112"} | util::Config{"target_grid", "CS-LFR-28"} |
                         util::Config{"functionspace", "NodeColumns"} | util::Config{"halo", 1} |
                         util::Config{"mesh_generator", "cubedsphere_dual"} |
-                        util::Config{"scheme", option::type{"cubedsphere-bilinear"}};
+                        util::Config{"scheme", option::type{"spherical-mean-value"}};
 
     regriddingTest(config);
 }
@@ -203,10 +203,10 @@ CASE("Regridding from high to low resolution: cubed sphere, bilinear") {
 // }
 
 CASE("plot binning kernel") {
-    const auto sourceGrid = Grid{"CS-LFR-80"};
+    const auto sourceGrid = Grid{"CS-LFR-40"};
     const auto targetGrid = Grid{"CS-LFR-5"};
 
-    const auto sourceHaloOption = option::halo(8);
+    const auto sourceHaloOption = option::halo(3);
     const auto targetHaloOption = option::halo(0);
 
     const auto sourceMesh = MeshGenerator("cubedsphere_dual", sourceHaloOption).generate(sourceGrid);
@@ -215,7 +215,7 @@ CASE("plot binning kernel") {
     const auto sourceFunctionSpace = functionspace::NodeColumns{sourceMesh, sourceHaloOption};
     const auto targetFunctionSpace = functionspace::NodeColumns{targetMesh, targetHaloOption};
 
-    const auto binningScheme = option::type{"binning"} | util::Config{"scheme", option::type{"cubedsphere-bilinear"}};
+    const auto binningScheme = option::type{"binning"} | util::Config{"scheme", option::type{"spherical-mean-value"}};
     auto binning             = Interpolation{binningScheme, sourceFunctionSpace, targetFunctionSpace};
 
     const auto binningMatrixStorage = interpolation::MatrixCache(binning).matrix();
@@ -279,7 +279,7 @@ CASE("dot-product test for the rigridding from high to low resolution; grid type
     auto targetFieldSet = FieldSet{};
     targetFieldSet.add(targetField);
 
-    const auto scheme = util::Config("type", "binning") | util::Config("scheme", option::type("cubedsphere-bilinear")) |
+    const auto scheme = util::Config("type", "binning") | util::Config("scheme", option::type("spherical-mean-value")) |
                         util::Config("adjoint", true);
 
     Interpolation binning(scheme, sourceFunctionSpace, targetFunctionSpace);

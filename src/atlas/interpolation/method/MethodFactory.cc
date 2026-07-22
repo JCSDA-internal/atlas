@@ -11,7 +11,8 @@
 #include "MethodFactory.h"
 
 // for static linking
-#include "binning/Binning.h"
+#include "approx_inverse/Binning.h"
+#include "approx_inverse/LocalPseudoInverse.h"
 #include "cubedsphere/CubedSphereBilinear.h"
 #include "knn/GridBoxAverage.h"
 #include "knn/GridBoxMaximum.h"
@@ -55,6 +56,7 @@ void force_link() {
             MethodBuilder<method::CubedSphereBilinear>();
             MethodBuilder<method::SphericalVector>();
             MethodBuilder<method::Binning>();
+            MethodBuilder<method::LocalPseudoInverse>();
             MethodBuilder<method::ConservativeSphericalPolygonInterpolation>();
             MethodBuilder<method::SphericalMeanValue>();
         }

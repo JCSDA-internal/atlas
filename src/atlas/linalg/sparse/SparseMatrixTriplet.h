@@ -121,8 +121,9 @@ SparseMatrixStorage make_sparse_matrix_storage_from_triplets(std::size_t n_rows,
 
 /// @brief For-each iteration over all non-zero triplets in row.
 template <typename Value, typename Index, typename Functor>
-std::enable_if_t<std::is_invocable_v<Functor, Index, Index, Value>> sparse_matrix_for_each_row(
-    std::size_t row, const SparseMatrixView<Value, Index>& matrix, Functor&& functor) {
+std::enable_if_t<std::is_invocable_v<Functor, Index, Index, Value> || std::is_invocable_v<Functor, Index, Value> ||
+                 std::is_invocable_v<Functor, Value>>
+sparse_matrix_row_for_each(std::size_t row, const SparseMatrixView<Value, Index>& matrix, Functor&& functor) {
     const Index* outer  = matrix.outer();
     const Index* inner  = matrix.inner();
     const Value* values = matrix.value();
@@ -130,7 +131,15 @@ std::enable_if_t<std::is_invocable_v<Functor, Index, Index, Value>> sparse_matri
     for (Index index = outer[row]; index < outer[row + 1]; ++index) {
         const Index column = inner[index];
         const Value value  = values[index];
-        functor(static_cast<Index>(row), column, value);
+        if constexpr (std::is_invocable_v<Functor, Index, Index, Value>) {
+            functor(static_cast<Index>(row), column, value);
+        }
+        else if constexpr (std::is_invocable_v<Functor, Index, Value>) {
+            functor(column, value);
+        }
+        else {
+            functor(value);
+        }
     }
 }
 
@@ -139,7 +148,7 @@ template <typename Value, typename Index, typename Functor>
 std::enable_if_t<std::is_invocable_v<Functor, Index, Index, Value>> sparse_matrix_for_each(
     const SparseMatrixView<Value, Index>& matrix, Functor&& functor) {
     for (std::size_t row = 0; row < matrix.rows(); ++row) {
-        sparse_matrix_for_each_row(row, matrix, functor);
+        sparse_matrix_row_for_each(row, matrix, functor);
     }
 }
 

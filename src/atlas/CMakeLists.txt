@@ -648,8 +648,12 @@ interpolation/method/PointIndex3.cc
 interpolation/method/PointIndex3.h
 interpolation/method/PointIndex2.cc
 interpolation/method/PointIndex2.h
-interpolation/method/binning/Binning.cc
-interpolation/method/binning/Binning.h
+interpolation/method/approx_inverse/ApproxInverse.cc
+interpolation/method/approx_inverse/ApproxInverse.h
+interpolation/method/approx_inverse/Binning.cc
+interpolation/method/approx_inverse/Binning.h
+interpolation/method/approx_inverse/LocalPseudoInverse.cc
+interpolation/method/approx_inverse/LocalPseudoInverse.h
 interpolation/method/cubedsphere/CubedSphereBilinear.cc
 interpolation/method/cubedsphere/CubedSphereBilinear.h
 interpolation/method/knn/GridBox.cc

@@ -58,7 +58,8 @@ Field getErrorField(const Field& targetField) {
 }
 
 /// Generate the residual between low_res -> high_res -> low_res transformation
-std::tuple<Field, Field, Field> getResidualField(const Interpolation& interpScheme, const Interpolation& binningScheme) {
+std::tuple<Field, Field, Field> getResidualField(const Interpolation& interpScheme,
+                                                 const Interpolation& binningScheme) {
     const auto lowResField = getVortexField(interpScheme.source());
 
     auto highResField = interpScheme.target().createField<double>(option::name("high res field"));
@@ -79,7 +80,8 @@ std::tuple<Field, Field, Field> getResidualField(const Interpolation& interpSche
 }
 
 /// Generate the residual between high_res -> low_res -> high_res transformation
-std::tuple<Field, Field, Field> getResidualFieldHighToLowToHigh(const Interpolation& interpScheme, const Interpolation& binningScheme) {
+std::tuple<Field, Field, Field> getResidualFieldHighToLowToHigh(const Interpolation& interpScheme,
+                                                                const Interpolation& binningScheme) {
     const auto highResField = getVortexField(interpScheme.target());
 
     auto lowResField = interpScheme.source().createField<double>(option::name("low res field"));
@@ -151,7 +153,7 @@ void regriddingTest(const util::Config& config) {
         if (fSpaceName == "NodeColumns") {
             const auto meshGenerator =
                 MeshGenerator{config.getString("mesh_generator"),
-                              option::halo{haloSize} | util::Config("partitioner", "equal_regions")};
+                              option::halo{haloSize} | util::Config("partitioner", "equal_regions") | util::Config("patch_pole", false)};
 
             const auto sourceMesh = meshGenerator.generate(sourceGrid);
             const auto targetMesh = meshGenerator.generate(targetGrid);
@@ -172,7 +174,7 @@ void regriddingTest(const util::Config& config) {
     const auto interpScheme = config.getSubConfiguration("scheme");
     const auto interp       = Interpolation{interpScheme, targetFunctionSpace, sourceFunctionSpace};
 
-    const auto binningScheme = option::type{"local-pseudoinverse"} | util::Config{"scheme", interpScheme};
+    const auto binningScheme = option::type{"local-pseudoinverse"} | util::Config{"scheme", interpScheme} | util::Config{"warn_on_missing_halo_points", true};
     const auto binning       = Interpolation{binningScheme, sourceFunctionSpace, targetFunctionSpace};
 
     sourceField.haloExchange();
@@ -246,10 +248,10 @@ CASE("Regridding from high to low resolution: gaussian, spherical-mean-value") {
 }
 
 CASE("plot binning kernel") {
-    const auto sourceGrid = Grid{"CS-LFR-35"};
+    const auto sourceGrid = Grid{"CS-LFR-45"};
     const auto targetGrid = Grid{"CS-LFR-5"};
 
-    const auto sourceHaloOption = option::halo(3);
+    const auto sourceHaloOption = option::halo(6);
     const auto targetHaloOption = option::halo(0);
 
     const auto sourceMesh = MeshGenerator("cubedsphere_dual", sourceHaloOption).generate(sourceGrid);
@@ -269,8 +271,8 @@ CASE("plot binning kernel") {
     const auto targetRidxView  = array::make_indexview<idx_t, 1>(targetFunctionSpace.remote_index());
     const auto targetPartView  = array::make_view<int, 1>(targetFunctionSpace.partition());
 
-    const auto targetRemoteIndices = std::vector{0, 2, 12};
-    const auto targetPartition     = 0;
+    const auto targetRemoteIndices = std::vector{0, 2, 4, 10, 12, 14, 20, 22, 24};
+    const auto targetPartition = 0;
 
     auto kernelField     = sourceFunctionSpace.createField<double>(option::name("kernel_field"));
     auto kernelFieldView = array::make_view<double, 1>(kernelField);
@@ -291,8 +293,8 @@ CASE("plot binning kernel") {
         }
     }
     // Force halo weights into owned region of field.
-    sourceFunctionSpace.adjointHaloExchange(kernelField);
-    sourceFunctionSpace.haloExchange(kernelField);
+    // sourceFunctionSpace.adjointHaloExchange(kernelField);
+    // sourceFunctionSpace.haloExchange(kernelField);
 
     makeGmshOutput("binning_kernel.msh", kernelField);
 }

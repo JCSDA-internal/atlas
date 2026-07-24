@@ -1,5 +1,5 @@
 /*
- * (C) Crown Copyright 2024 Met Office
+ * (C) Crown Copyright 2026 Met Office
  *
  * This software is licensed under the terms of the Apache Licence Version 2.0
  * which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
@@ -7,13 +7,8 @@
 
 #include "atlas/interpolation/method/approx_inverse/LocalPseudoInverse.h"
 
-#include <algorithm>
-#include <array>
 #include <cmath>
-#include <cstddef>
-#include <iterator>
 #include <map>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,6 +30,8 @@ MethodBuilder<LocalPseudoInverse> builder("local-pseudoinverse");
 
 constexpr auto tiny_weight = 1e-12;
 
+// Class to handle a sub-matrix of the interpolation matrix, which is used to compute part of the pseudoinverse.
+// Sub matrix contains all rows of interpolation matrix which share a common set of column indices.
 class SubMatrix {
 public:
     using Index   = LocalPseudoInverse::Index;
@@ -67,11 +64,12 @@ public:
         // Compute the pseudoinverse using complete orthogonal decomposition.
         const MatrixType sub_matrix_pseudoinverse = sub_matrix.completeOrthogonalDecomposition().pseudoInverse();
 
-
         const auto inv_mat_rows = sub_matrix_pseudoinverse.rows();
         const auto inv_mat_cols = sub_matrix_pseudoinverse.cols();
-
-        const auto norm = std::sqrt(inv_mat_cols / (inv_mat_rows * sub_matrix_pseudoinverse.squaredNorm()));
+        const auto squared_norm = sub_matrix_pseudoinverse.squaredNorm();
+        const auto norm = squared_norm > 0.
+                      ? std::sqrt(inv_mat_cols / (inv_mat_rows * squared_norm))
+                      : 0.;
 
         // Write the pseudoinverse values to triplets.
         for (Eigen::Index i = 0; i < inv_mat_rows; ++i) {
@@ -95,6 +93,8 @@ private:
     std::vector<std::vector<Value>> values_{};
 };
 
+// Class to manage a collection of sub-matrices, which are used to compute a pseudoinverse of the interpolation matrix.
+// Sub-matrices are stored in a map, keyed to their column indices.
 class SubMatrices {
 public:
     using Value               = LocalPseudoInverse::Value;
@@ -111,6 +111,7 @@ public:
             auto col_value_map = std::map<Index, Value>{};
 
             linalg::sparse_matrix_row_for_each(row_idx, interp_matrix_view, [&](Index col, Value value) {
+                // Skip tiny weights to avoid numerical issues in the pseudoinverse computation.
                 if (std::abs(value) < tiny_weight) {
                     return;
                 }
@@ -132,16 +133,16 @@ public:
                 values.emplace_back(value);
             }
 
-            sub_matrices_.try_emplace(col_indices, col_indices);
-            sub_matrices_.at(col_indices).add_row(static_cast<Index>(row_idx), values);
+            auto [it, inserted] = sub_matrices_.try_emplace(col_indices, col_indices);
+            it->second.add_row(static_cast<Index>(row_idx), values);
             num_elems_ += values.size();
         }
     }
 
     void print_underdetermined_warnings() const {
         auto underdetermined_matrices = 0;
-        for (const auto& [_, sub_matrix] : sub_matrices_) {
-            if (sub_matrix.num_rows() < sub_matrix.num_cols()) {
+        for (const auto& element : sub_matrices_) {
+            if (element.second.num_rows() < element.second.num_cols()) {
                 ++underdetermined_matrices;
             }
         }
@@ -151,7 +152,7 @@ public:
         mpi::comm().reduceInPlace(total_elements, eckit::mpi::Operation::SUM, 0);
         if (mpi::rank() == 0 && underdetermined_matrices > 0) {
             Log::warning() << "LocalPseudoInverse: " << underdetermined_matrices << " of " << total_elements
-                           << " mesh elements have fewer rows than columns. Pseudoinverse may not be accurate."
+                           << " mesh elements have fewer rows than columns. Consider checking accuracy of regridding."
                            << std::endl;
         }
     }
@@ -160,8 +161,8 @@ public:
         auto triplets = std::vector<Triplet>{};
         triplets.reserve(num_elems_);
 
-        for (auto& [_, sub_matrix] : sub_matrices_) {
-            sub_matrix.compute_pseudoinverse_triplets(triplets);
+        for (const auto& element : sub_matrices_) {
+            element.second.compute_pseudoinverse_triplets(triplets);
         }
 
         return triplets;

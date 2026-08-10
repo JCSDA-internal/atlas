@@ -42,6 +42,13 @@ Field& GetCubedSphereNodalArea::operator()(Mesh& mesh) {
 
     for (size_t i = 0; i < gcell_area_fview.size(); ++i) {
       PointLonLat loc = PointLonLat(lonlat(i, atlas::LON), lonlat(i, atlas::LAT));
+
+      if (std::abs(std::abs(loc.lat()) - 90.) < 1.e-12) {
+        // area of a grid cell at the pole (geographic coord. system)
+        gcell_area_fview(i) = gcell_area_cs;
+        continue;
+      }
+
       double cos_lat = std::cos(deg2rad * loc.lat());
       double grid_jac_det = 1/proj.jacobian(loc).determinant();
       // area of a grid cell (geographic coord. system)

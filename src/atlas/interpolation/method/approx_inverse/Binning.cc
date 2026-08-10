@@ -39,7 +39,7 @@ Binning::SparseMatrixStorage Binning::approx_inverse_transform(
 
     // Approximate inverse transform by transposing the interpolation matrix.
     linalg::sparse_matrix_for_each(interp_matrix_view, [&](Index row, Index col, Value weight) {
-        triplets.emplace_back(col, row, weight * area_weights.at(col));
+        triplets.emplace_back(col, row, weight * area_weights.at(row));
     });
 
     return linalg::make_sparse_matrix_storage_from_triplets(static_cast<Index>(target().size()),

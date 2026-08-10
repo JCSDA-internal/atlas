@@ -39,32 +39,32 @@ CubedSphereDualMeshGenerator::CubedSphereDualMeshGenerator(const eckit::Parametr
     // Get mpi_comm
     std::string mpi_comm = mpi::comm().name();
     p.get("mpi_comm", mpi_comm);
-    options.set("mpi_comm", mpi_comm);
+    options_.set("mpi_comm", mpi_comm);
 
     configure_defaults();
 
     // Get number of partitions.
     size_t nb_parts;
     if (p.get("nb_parts", nb_parts)) {
-        options.set("nb_parts", nb_parts);
+        options_.set("nb_parts", nb_parts);
     }
 
     // Get this partition.
     int part;
     if (p.get("part", part)) {
-        options.set("part", part);
+        options_.set("part", part);
     }
 
     // Get halo size.
     int halo;
     if (p.get("halo", halo)) {
-        options.set("halo", halo);
+        options_.set("halo", halo);
     }
 
     // Get partitioner.
     std::string partitioner;
     if (p.get("partitioner", partitioner) && partitioner.size()) {
-        options.set("partitioner", partitioner);
+        options_.set("partitioner", partitioner);
     }
 }
 
@@ -72,32 +72,32 @@ CubedSphereDualMeshGenerator::CubedSphereDualMeshGenerator(const eckit::Parametr
 
 
 void CubedSphereDualMeshGenerator::configure_defaults() {
-    auto& comm = mpi::comm(options.getString("mpi_comm"));
+    auto& comm = mpi::comm(options_.getString("mpi_comm"));
 
     // This option sets number of partitions.
-    options.set("nb_parts", comm.size());
+    options_.set("nb_parts", comm.size());
 
     // This option sets the part that will be generated.
-    options.set("part", comm.rank());
+    options_.set("part", comm.rank());
 
     // This options sets the number of halo elements around each partition.
-    options.set("halo", 0);
+    options_.set("halo", 0);
 
     // This options sets the default partitioner.
-    options.set<std::string>("partitioner", "cubedsphere");
+    options_.set<std::string>("partitioner", "cubedsphere");
 }
 
 // -----------------------------------------------------------------------------
 
 void CubedSphereDualMeshGenerator::generate(const Grid& grid, Mesh& mesh) const {
     // Get partitioner type and number of partitions from config.
-    const idx_t nParts         = static_cast<idx_t>(options.get<size_t>("nb_parts"));
-    const std::string partType = options.get<std::string>("partitioner");
+    const idx_t nParts         = static_cast<idx_t>(options_.get<size_t>("nb_parts"));
+    const std::string partType = options_.get<std::string>("partitioner");
 
     auto partConfig = util::Config{};
     partConfig.set("type", partType);
     partConfig.set("partitions", nParts);
-    partConfig.set("mpi_comm",options.getString("mpi_comm"));
+    partConfig.set("mpi_comm",options_.getString("mpi_comm"));
 
     // Use lonlat instead of xy for non cubedsphere partitioner.
     if (partType != "cubedsphere") {
@@ -105,7 +105,7 @@ void CubedSphereDualMeshGenerator::generate(const Grid& grid, Mesh& mesh) const 
     }
 
     // Set distribution.
-    mpi::Scope mpi_scope(options.getString("mpi_comm"));
+    mpi::Scope mpi_scope(options_.getString("mpi_comm"));
     const auto partitioner  = grid::Partitioner(partConfig);
     const auto distribution = grid::Distribution(grid, partitioner);
 
@@ -134,8 +134,9 @@ void CubedSphereDualMeshGenerator::generate(const Grid& grid, const grid::Distri
 
     // Clone some grid properties.
     setGrid(mesh, csGrid, distribution);
+    setProjection(mesh, csGrid->projection());
 
-    mpi::Scope mpi_scope(options.getString("mpi_comm"));
+    mpi::Scope mpi_scope(options_.getString("mpi_comm"));
     generate_mesh(csGrid, distribution, mesh);
 }
 
@@ -271,14 +272,14 @@ void CubedSphereDualMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid, 
     using namespace detail::cubedsphere;
 
     const idx_t N     = csGrid.N();
-    const idx_t nHalo = options.get<int>("halo");
+    const idx_t nHalo = options_.get<int>("halo");
 
     //--------------------------------------------------------------------------
     // Create a cubed-sphere mesh.
     //--------------------------------------------------------------------------
 
     // Generate cubed sphere primal mesh.
-    auto primalOptions = options;
+    auto primalOptions = options_;
     primalOptions.set("halo", nHalo + 1);
     const auto primalMesh = MeshGenerator("cubedsphere", primalOptions).generate(csGrid, distribution);
 
@@ -465,7 +466,7 @@ void CubedSphereDualMeshGenerator::generate_mesh(const CubedSphereGrid& csGrid, 
 // -----------------------------------------------------------------------------
 
 void CubedSphereDualMeshGenerator::set_metadata(Mesh& mesh) const {
-    const auto nHalo = options.get<int>("halo");
+    const auto nHalo = options_.get<int>("halo");
 
     // Set basic halo metadata.
     mesh.metadata().set("halo", nHalo);
@@ -473,7 +474,7 @@ void CubedSphereDualMeshGenerator::set_metadata(Mesh& mesh) const {
     mesh.nodes().metadata().set("parallel", true);
     mesh.cells().metadata().set("parallel", true);
 
-    mesh.metadata().set("mpi_comm",options.getString("mpi_comm"));
+    mesh.metadata().set("mpi_comm",options_.getString("mpi_comm"));
 
 
     // Loop over nodes and count number of halo elements.
@@ -517,7 +518,7 @@ void CubedSphereDualMeshGenerator::set_metadata(Mesh& mesh) const {
 
 void CubedSphereDualMeshGenerator::hash(eckit::Hash& h) const {
     h.add("CubedSphereDualMeshGenerator");
-    options.hash(h);
+    options_.hash(h);
 }
 
 // -----------------------------------------------------------------------------

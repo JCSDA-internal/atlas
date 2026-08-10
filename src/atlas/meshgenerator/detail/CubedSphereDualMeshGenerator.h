@@ -59,7 +59,7 @@ private:
     void set_metadata(Mesh&) const;
 
 private:
-    util::Metadata options;
+    util::Metadata options_;
 };
 
 //--------------------------------------------------------------------------------------------------

@@ -181,9 +181,25 @@ ecbuild_add_test( TARGET atlas_test_interpolation_spherical_vector_to_point_6PE
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 
-ecbuild_add_test( TARGET atlas_test_interpolation_binning
-  SOURCES  test_interpolation_binning.cc
+ecbuild_add_executable( TARGET atlas_test_interpolation_approx_inverse
+  SOURCES  test_interpolation_approx_inverse.cc
   LIBS     atlas
+  NOINSTALL
+)
+
+ecbuild_add_test( TARGET atlas_test_interpolation_binning
+  COMMAND  atlas_test_interpolation_approx_inverse
+  ARGS     --config ${CMAKE_CURRENT_SOURCE_DIR}/testinput/interpolation_approx_inverse_binning.yaml
+  RESOURCES testinput/interpolation_approx_inverse_binning.yaml
+  MPI      6
+  CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 6
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
+ecbuild_add_test( TARGET atlas_test_interpolation_local_pseudoinverse
+  COMMAND  atlas_test_interpolation_approx_inverse
+  ARGS     --config ${CMAKE_CURRENT_SOURCE_DIR}/testinput/interpolation_approx_inverse_local_pseudoinverse.yaml
+  RESOURCES testinput/interpolation_approx_inverse_local_pseudoinverse.yaml
   MPI      6
   CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 6
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}

@@ -157,6 +157,7 @@ void CubedSphereMeshGenerator::generate(const Grid& grid, const grid::Distributi
 
     // Clone some grid properties.
     setGrid(mesh, csGrid, distribution);
+    setProjection(mesh, csGrid->projection());
     mesh.metadata().set("mpi_comm",options.getString("mpi_comm"));
 
     generate_mesh(csGrid, distribution, mesh);

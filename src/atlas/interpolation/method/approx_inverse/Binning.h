@@ -25,6 +25,8 @@ namespace method {
 /// the nodal area is obtained from the mesh; for all other grid types equal
 /// weights are used.
 ///
+/// @deprecated Prefer @c LocalPseudoInverse for better variance preservation.
+///
 /// Registered under the factory key @c "binning".
 class Binning : public ApproxInverse {
  public:

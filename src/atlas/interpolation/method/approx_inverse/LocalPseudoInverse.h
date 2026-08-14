@@ -9,6 +9,7 @@
 
 #include "atlas/interpolation/method/approx_inverse/ApproxInverse.h"
 
+#if ATLAS_HAVE_EIGEN
 
 namespace atlas {
 namespace interpolation {
@@ -56,3 +57,5 @@ class LocalPseudoInverse : public ApproxInverse {
 }  // namespace method
 }  // namespace interpolation
 }  // namespace atlas
+
+#endif

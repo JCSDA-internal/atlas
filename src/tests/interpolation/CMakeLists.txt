@@ -201,7 +201,7 @@ ecbuild_add_test( TARGET atlas_test_interpolation_local_pseudoinverse
   ARGS     --config ${CMAKE_CURRENT_SOURCE_DIR}/testinput/interpolation_approx_inverse_local_pseudoinverse.yaml
   RESOURCES testinput/interpolation_approx_inverse_local_pseudoinverse.yaml
   MPI      6
-  CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 6
+  CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 6 AND atlas_HAVE_EIGEN
   ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
 )
 

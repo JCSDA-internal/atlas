@@ -7,6 +7,8 @@
 
 #include "atlas/interpolation/method/approx_inverse/LocalPseudoInverse.h"
 
+#if ATLAS_HAVE_EIGEN
+
 #include <cmath>
 #include <map>
 #include <utility>
@@ -186,3 +188,5 @@ LocalPseudoInverse::SparseMatrixStorage LocalPseudoInverse::approx_inverse_trans
 }  // namespace method
 }  // namespace interpolation
 }  // namespace atlas
+
+#endif

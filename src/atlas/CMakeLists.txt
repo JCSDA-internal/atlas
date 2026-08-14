@@ -469,6 +469,10 @@ list( APPEND atlas_field_srcs
 field.h
 field/Field.cc
 field/Field.h
+field/FieldBuilder.cc
+field/FieldBuilder.h
+field/builders/GridBoxArea.cc
+field/builders/GridBoxArea.h
 field/FieldCreator.cc
 field/FieldCreator.h
 field/FieldCreatorArraySpec.cc

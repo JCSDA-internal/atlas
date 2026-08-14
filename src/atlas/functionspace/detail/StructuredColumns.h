@@ -152,6 +152,7 @@ public:
     Field index_j() const { return field_index_j_; }
     Field ghost() const override { return field_ghost_; }
 
+    idx_t compute_j(idx_t j) const;
     void compute_xy(idx_t i, idx_t j, PointXY& xy) const;
     PointXY compute_xy(idx_t i, idx_t j) const {
         PointXY xy;
@@ -306,6 +307,7 @@ private:  // data
 
     idx_t north_pole_included_;
     idx_t south_pole_included_;
+    bool grid_is_regional_;
     idx_t ny_;
 
     idx_t part_;

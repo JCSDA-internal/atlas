@@ -102,6 +102,12 @@ ecbuild_add_test( TARGET atlas_test_structuredcolumns
   CONDITION eckit_HAVE_MPI AND MPI_SLOTS GREATER_EQUAL 5
 )
 
+ecbuild_add_test( TARGET atlas_test_structuredcolumns_area
+  SOURCES  test_structuredcolumns_area.cc
+  LIBS     atlas
+  ENVIRONMENT ${ATLAS_TEST_ENVIRONMENT}
+)
+
 ecbuild_add_test( TARGET atlas_test_blockstructuredcolumns
   MPI        3
   SOURCES  test_blockstructuredcolumns.cc

@@ -570,18 +570,35 @@ StructuredColumns::StructuredColumns(const Grid& grid, const Vertical& vertical,
 
 // ----------------------------------------------------------------------------
 
-void StructuredColumns::compute_xy(idx_t i, idx_t j, PointXY& xy) const {
-    idx_t jj;
+idx_t StructuredColumns::compute_j(idx_t j) const {
     if (j < 0) {
-        jj     = -j - 1 + north_pole_included_;
-        xy[YY] = 180. - grid_->y(jj);
+        return grid_is_regional_ ? -j : -j - 1 + north_pole_included_;
+    }
+    if (j >= ny_) {
+        return grid_is_regional_ ? 2 * ny_ - j - 2 : 2 * ny_ - j - 1 - south_pole_included_;
+    }
+    return j;
+}
+
+void StructuredColumns::compute_xy(idx_t i, idx_t j, PointXY& xy) const {
+    const idx_t jj = compute_j(j);
+    if (j < 0) {
+        if (grid_is_regional_) {
+            xy[YY] = 2. * grid_->y(0) - grid_->y(jj);
+        }
+        else {
+            xy[YY] = 180. - grid_->y(jj);
+        }
     }
     else if (j >= ny_) {
-        jj     = 2 * ny_ - j - 1 - south_pole_included_;
-        xy[YY] = -180. - grid_->y(jj);
+        if (grid_is_regional_) {
+            xy[YY] = 2. * grid_->y(ny_ - 1) - grid_->y(jj);
+        }
+        else {
+            xy[YY] = -180. - grid_->y(jj);
+        }
     }
     else {
-        jj     = j;
         xy[YY] = grid_->y(jj);
     }
     xy[XX] = grid_->x(i, jj);

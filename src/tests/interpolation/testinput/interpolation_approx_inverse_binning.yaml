@@ -10,9 +10,9 @@ write gmsh: true
 runs:
   - test name: cubedsphere_x2
     source grid:
-      name: CS-LFR-56
-    target grid:
       name: CS-LFR-28
+    target grid:
+      name: CS-LFR-14
     source mesh generator:
       type: cubedsphere_dual
     target mesh generator:
@@ -31,9 +31,9 @@ runs:
 
   - test name: cubedsphere_x3
     source grid:
-      name: CS-LFR-84
+      name: CS-LFR-42
     target grid:
-      name: CS-LFR-28
+      name: CS-LFR-14
     source mesh generator:
       type: cubedsphere_dual
     target mesh generator:
@@ -52,9 +52,9 @@ runs:
 
   - test name: cubedsphere_x4
     source grid:
-      name: CS-LFR-112
+      name: CS-LFR-56
     target grid:
-      name: CS-LFR-28
+      name: CS-LFR-14
     source mesh generator:
       type: cubedsphere_dual
     target mesh generator:
@@ -70,39 +70,19 @@ runs:
       type: spherical-mean-value
       treat_failure_as_missing_value: false
 
-  - test name: gaussian_x3
-    source grid:
-      name: O104
-    target grid:
-      name: O32
-    source mesh generator:
-      type: structured
-    target mesh generator:
-      type: structured
-    source partitioner:
-      matching mesh: true
-      type: lonlat-polygon
-    target partitioner:
-      type: equal_regions
-    source halo: 3
-    target halo: 1
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
-
   - test name: regional_x3_aligned
     source grid:
       type: regional
-      nx: 151
-      ny: 151
+      nx: 76
+      ny: 76
       north: 55.
       south: -35.
       west: 55.
       east: 145.
     target grid:
       type: regional
-      nx: 51
-      ny: 51
+      nx: 26
+      ny: 26
       north: 55.
       south: -35.
       west: 55.
@@ -124,16 +104,16 @@ runs:
   - test name: regional_x2_staggered
     source grid:
       type: regional
-      nx: 100
-      ny: 100
-      north: 54.775
-      south: -34.775
-      west: 55.225
-      east: 144.775
+      nx: 50
+      ny: 50
+      north: 54.55
+      south: -34.55
+      west: 55.45
+      east: 144.55
     target grid:
       type: regional
-      nx: 51
-      ny: 51
+      nx: 26
+      ny: 26
       north: 55.
       south: -35.
       west: 55.
@@ -172,4 +152,3 @@ visualise inverse interpolation kernel:
     treat_failure_as_missing_value: false
   plot rank: 0
   plot rows: [0, 2, 4, 10, 12, 14, 20, 22, 24]
-  

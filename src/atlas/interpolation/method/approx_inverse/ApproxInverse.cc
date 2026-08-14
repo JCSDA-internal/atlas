@@ -88,7 +88,7 @@ ApproxInverse::SparseMatrixStorage ApproxInverse::halo_exchange(const SparseMatr
     const auto source_views = Views{interp_source_};
     const auto target_views = Views{interp_target_};
 
-    using PartRidx       = std::pair<int, idx_t>;
+    using PartRidx       = std::pair<idx_t, idx_t>;
     using PartRidxBuffer = std::vector<std::vector<PartRidx>>;
     using ValueBuffer    = std::vector<std::vector<Value>>;
 

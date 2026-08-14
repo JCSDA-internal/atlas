@@ -7,6 +7,8 @@
 
 #include "atlas/interpolation/method/approx_inverse/LocalPseudoInverse.h"
 
+#include "atlas/library/defines.h"
+
 #if ATLAS_HAVE_EIGEN
 
 #include <cmath>

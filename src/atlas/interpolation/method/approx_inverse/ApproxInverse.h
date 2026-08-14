@@ -91,6 +91,10 @@ private:
     SparseMatrixStorage normalise_rows(const SparseMatrixStorage& inverse_interp_matrix) const;
 
     void do_setup(const FunctionSpace& source, const FunctionSpace& target) override;
+    void do_setup(const Grid& source, const Grid& target, const Cache&) override;
+    void do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache&) override;
+
+    
     
     eckit::LocalConfiguration interp_ancillary_scheme_{};
 

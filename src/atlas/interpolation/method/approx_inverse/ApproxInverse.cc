@@ -62,6 +62,14 @@ void ApproxInverse::do_setup(const FunctionSpace& source, const FunctionSpace& t
     setMatrix(std::move(matrix));
 }
 
+void ApproxInverse::do_setup(const Grid& source, const Grid& target, const Cache&) {
+    ATLAS_NOTIMPLEMENTED;
+}
+
+void ApproxInverse::do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache&) {
+    ATLAS_NOTIMPLEMENTED;
+}
+
 ApproxInverse::SparseMatrixStorage ApproxInverse::halo_exchange(const SparseMatrixStorage& interp_matrix) const {
     const auto& comm              = mpi::comm();
     const auto interp_matrix_view = linalg::make_host_view<Value, Index>(interp_matrix);

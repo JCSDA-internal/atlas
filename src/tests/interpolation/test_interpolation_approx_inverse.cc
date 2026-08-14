@@ -42,6 +42,12 @@ struct FieldStats {
     double max{};
 };
 
+struct CglsResult {
+    Field solution;
+    double residual_norm{};
+    int iterations{};
+};
+
 util::Config get_test_config() {
     const auto config_path =
         eckit::Resource<std::string>("--config", "testinput/interpolation_approx_inverse_local_pseudoinverse.yaml");
@@ -60,10 +66,11 @@ Field get_vortex_field(const FunctionSpace& function_space, const std::string& n
     return field;
 }
 
-std::pair<FieldSet, FieldSet> get_residual_field_wplus_wx_minus_x(const Interpolation& forward_interpolation,
-                                                                  const Interpolation& approx_inverse_interpolation) {
-    const auto x_field = get_vortex_field(approx_inverse_interpolation.target(), "x_field");
-    const auto y_field = get_vortex_field(approx_inverse_interpolation.source(), "y_field");
+template <typename InverseInterpolationType>
+std::pair<FieldSet, FieldSet> get_fields_and_residuals(const Interpolation& forward_interpolation,
+                                                       const InverseInterpolationType& inverse_interpolation) {
+    const auto x_field = get_vortex_field(inverse_interpolation.target(), "x_field");
+    const auto y_field = get_vortex_field(inverse_interpolation.source(), "y_field");
 
     const auto abs_difference = [](const Field& lhs, const Field& rhs, const std::string& name) {
         auto diff_field      = lhs.functionspace().createField<double>(option::name(name));
@@ -78,39 +85,55 @@ std::pair<FieldSet, FieldSet> get_residual_field_wplus_wx_minus_x(const Interpol
         return diff_field;
     };
 
-    const auto do_interpolation = [](const Interpolation& interpolation, const Field& input_field,
+    const auto do_interpolation = [](const auto& interpolation, const Field& input_field,
                                      const std::string& output_field_name) {
-        auto output_field = interpolation.target().createField<double>(option::name(output_field_name));
+        auto output_field = interpolation.target().template createField<double>(option::name(output_field_name));
         interpolation.execute(input_field, output_field);
         output_field.haloExchange();
         return output_field;
     };
 
-    const auto wx_field       = do_interpolation(forward_interpolation, x_field, "wx_field");
-    const auto wx_error_field = abs_difference(wx_field, y_field, "wx_error_field");
+    const auto do_interpolation_adjoint =
+        [](const auto& interpolation, const Field& input_field, const std::string& output_field_name) {
+            auto output_field = interpolation.source().template createField<double>(option::name(output_field_name));
+            array::make_view<double, 1>(output_field).assign(0.);
+            interpolation.execute_adjoint(output_field, input_field);
+            interpolation.source().haloExchange(output_field);
+            return output_field;
+        };
 
-    const auto wplus_y_field       = do_interpolation(approx_inverse_interpolation, y_field, "wplus_y_field");
-    const auto wplus_y_error_field = abs_difference(wplus_y_field, x_field, "wplus_y_error_field");
+    const auto w_x_field       = do_interpolation(forward_interpolation, x_field, "w_x_field");
+    const auto w_x_residual= abs_difference(w_x_field, y_field, "w_x_residual");
 
-    const auto wplus_wx_field          = do_interpolation(approx_inverse_interpolation, wx_field, "wplus_wx_field");
-    const auto wplus_wx_residual_field = abs_difference(wplus_wx_field, x_field, "wplus_wx_residual_field");
+    const auto wplus_y_field       = do_interpolation(inverse_interpolation, y_field, "wplus_y_field");
+    const auto wplus_y_residual = abs_difference(wplus_y_field, x_field, "wplus_y_residual");
 
-    const auto wwplus_y_field          = do_interpolation(forward_interpolation, wplus_y_field, "wwplus_y_field");
-    const auto wwplus_y_residual_field = abs_difference(wwplus_y_field, y_field, "wwplus_y_residual_field");
+    const auto wplus_w_x_field          = do_interpolation(inverse_interpolation, w_x_field, "wplus_w_x_field");
+    const auto wplus_w_x_residual = abs_difference(wplus_w_x_field, x_field, "wplus_w_x_residual");
+
+    const auto w_wplus_y_field          = do_interpolation(forward_interpolation, wplus_y_field, "w_wplus_y_field");
+    const auto w_wplus_y_residual = abs_difference(w_wplus_y_field, y_field, "w_wplus_y_residual");
+
+    const auto wT_y_field = do_interpolation_adjoint(forward_interpolation, y_field, "wT_y_field");
+    const auto wT_wplus_y_residual =
+        do_interpolation_adjoint(forward_interpolation, w_wplus_y_residual, "wT_wplus_y_residual");
+
 
     auto x_space_fields = FieldSet{};
     x_space_fields.add(x_field);
     x_space_fields.add(wplus_y_field);
-    x_space_fields.add(wplus_y_error_field);
-    x_space_fields.add(wplus_wx_field);
-    x_space_fields.add(wplus_wx_residual_field);
+    x_space_fields.add(wplus_y_residual);
+    x_space_fields.add(wplus_w_x_field);
+    x_space_fields.add(wplus_w_x_residual);
+    x_space_fields.add(wT_y_field);
+    x_space_fields.add(wT_wplus_y_residual);
 
     auto y_space_fields = FieldSet{};
     y_space_fields.add(y_field);
-    y_space_fields.add(wx_field);
-    y_space_fields.add(wx_error_field);
-    y_space_fields.add(wwplus_y_field);
-    y_space_fields.add(wwplus_y_residual_field);
+    y_space_fields.add(w_x_field);
+    y_space_fields.add(w_x_residual);
+    y_space_fields.add(w_wplus_y_field);
+    y_space_fields.add(w_wplus_y_residual);
 
     return {x_space_fields, y_space_fields};
 }
@@ -172,6 +195,178 @@ void log_field_stats(const std::string& label, const Field& field) {
     }
 }
 
+double dot_owned(const Field& lhs, const Field& rhs) {
+    ATLAS_ASSERT(lhs.shape(0) == rhs.shape(0));
+
+    const auto lhs_view   = array::make_view<double, 1>(lhs);
+    const auto rhs_view   = array::make_view<double, 1>(rhs);
+    const auto ghost_view = array::make_view<int, 1>(lhs.functionspace().ghost());
+
+    double local_dot = 0.;
+    for (idx_t idx = 0; idx < lhs.shape(0); ++idx) {
+        if (ghost_view(idx)) {
+            continue;
+        }
+        local_dot += lhs_view(idx) * rhs_view(idx);
+    }
+
+    eckit::mpi::comm().allReduceInPlace(local_dot, eckit::mpi::Operation::SUM);
+    return local_dot;
+}
+
+void axpy(Field& y, const Field& x, const double alpha) {
+    ATLAS_ASSERT(y.shape(0) == x.shape(0));
+
+    auto y_view       = array::make_view<double, 1>(y);
+    const auto x_view = array::make_view<double, 1>(x);
+
+    for (idx_t idx = 0; idx < y.shape(0); ++idx) {
+        y_view(idx) += alpha * x_view(idx);
+    }
+}
+
+Field apply_forward(const Interpolation& forward_interpolation, const Field& input, const std::string& output_name) {
+    auto output = forward_interpolation.target().createField<double>(option::name(output_name));
+    input.functionspace().haloExchange(input);
+    forward_interpolation.execute(input, output);
+    output.functionspace().haloExchange(output);
+    return output;
+}
+
+Field apply_adjoint(const Interpolation& forward_interpolation, const Field& input, const std::string& output_name) {
+    auto output = forward_interpolation.source().createField<double>(option::name(output_name));
+    array::make_view<double, 1>(output).assign(0.);
+    forward_interpolation.execute_adjoint(output, input);
+    output.functionspace().adjointHaloExchange(output);
+    return output;
+}
+
+CglsResult solve_cgls(const Interpolation& forward_interpolation, const Field& rhs, const Field& x0,
+                      const int max_iterations, const double tolerance) {
+    auto x = x0.clone();
+    x.rename("x_cgls");
+
+    auto wx = apply_forward(forward_interpolation, x, "wx_cgls");
+    auto r  = rhs.clone();
+    r.rename("r_cgls");
+    axpy(r, wx, -1.0);
+
+    auto s = apply_adjoint(forward_interpolation, r, "s_cgls");
+    auto p = s.clone();
+    p.rename("p_cgls");
+
+    auto gamma        = dot_owned(s, s);
+    const auto gamma0 = gamma;
+
+    int iteration = 0;
+    for (; iteration < max_iterations; ++iteration) {
+        if (gamma <= tolerance * tolerance * gamma0) {
+            break;
+        }
+
+        auto q           = apply_forward(forward_interpolation, p, "q_cgls");
+        const auto delta = dot_owned(q, q);
+        if (delta <= 0.) {
+            break;
+        }
+
+        const auto alpha = gamma / delta;
+        axpy(x, p, alpha);
+        axpy(r, q, -alpha);
+
+        auto s_new           = apply_adjoint(forward_interpolation, r, "s_new_cgls");
+        const auto gamma_new = dot_owned(s_new, s_new);
+        if (gamma <= 0.) {
+            s     = s_new;
+            gamma = gamma_new;
+            break;
+        }
+
+        const auto beta = gamma_new / gamma;
+        auto p_new      = s_new.clone();
+        p_new.rename("p_new_cgls");
+        axpy(p_new, p, beta);
+
+        s     = s_new;
+        p     = p_new;
+        gamma = gamma_new;
+    }
+
+    const auto residual_norm = std::sqrt(std::max(0., dot_owned(r, r)));
+    return {x, residual_norm, iteration};
+}
+
+class CglsInterpolation {
+public:
+    struct SolveDiagnostics {
+        std::string output_field_name;
+        double residual_norm{};
+        double projected_residual_norm{};
+        double projected_residual_ratio{};
+        int iterations{};
+    };
+
+    CglsInterpolation(const Interpolation& forward_interpolation, const Interpolation& initial_guess_interpolation,
+                      const int max_iterations, const double tolerance):
+        forward_interpolation_{forward_interpolation},
+        initial_guess_interpolation_{initial_guess_interpolation},
+        max_iterations_{max_iterations},
+        tolerance_{tolerance} {}
+
+    const FunctionSpace& source() const { return initial_guess_interpolation_.source(); }
+
+    const FunctionSpace& target() const { return initial_guess_interpolation_.target(); }
+
+    void clear_diagnostics() const { diagnostics_.clear(); }
+
+    const std::vector<SolveDiagnostics>& diagnostics() const { return diagnostics_; }
+
+    int max_iterations() const { return max_iterations_; }
+
+    double tolerance() const { return tolerance_; }
+
+    void execute(const Field& input, Field& output) const {
+        auto x0 = target().createField<double>(option::name("x0_cgls"));
+        initial_guess_interpolation_.execute(input, x0);
+        x0.haloExchange();
+
+        auto wx0 = apply_forward(forward_interpolation_, x0, "wx0_cgls");
+        auto r0  = input.clone();
+        r0.rename("r0_cgls");
+        axpy(r0, wx0, -1.0);
+        auto s0                              = apply_adjoint(forward_interpolation_, r0, "s0_cgls");
+        const auto projected_residual_norm_0 = std::sqrt(std::max(0., dot_owned(s0, s0)));
+
+        const auto cgls_result = solve_cgls(forward_interpolation_, input, x0, max_iterations_, tolerance_);
+        auto wx                = apply_forward(forward_interpolation_, cgls_result.solution, "wx_cgls_diag");
+        auto r                 = input.clone();
+        r.rename("r_cgls_diag");
+        axpy(r, wx, -1.0);
+        auto s                             = apply_adjoint(forward_interpolation_, r, "s_cgls_diag");
+        const auto projected_residual_norm = std::sqrt(std::max(0., dot_owned(s, s)));
+        const auto projected_residual_ratio =
+            projected_residual_norm_0 > 0. ? projected_residual_norm / projected_residual_norm_0 : 0.;
+
+        diagnostics_.push_back({output.name(), cgls_result.residual_norm, projected_residual_norm,
+                                projected_residual_ratio, cgls_result.iterations});
+
+        ATLAS_ASSERT(output.shape(0) == cgls_result.solution.shape(0));
+        auto output_view         = array::make_view<double, 1>(output);
+        const auto solution_view = array::make_view<double, 1>(cgls_result.solution);
+        for (idx_t idx = 0; idx < output.shape(0); ++idx) {
+            output_view(idx) = solution_view(idx);
+        }
+        output.haloExchange();
+    }
+
+private:
+    const Interpolation& forward_interpolation_;
+    const Interpolation& initial_guess_interpolation_;
+    int max_iterations_{};
+    double tolerance_{};
+    mutable std::vector<SolveDiagnostics> diagnostics_{};
+};
+
 
 std::pair<FunctionSpace, FunctionSpace> make_functionspaces(const util::Config& run_config) {
     const util::Config source_grid_config        = run_config.getSubConfiguration("source grid");
@@ -222,7 +417,7 @@ void run_approx_inverse_case(const util::Config& global_config, const util::Conf
         Interpolation{approx_inverse_scheme, source_function_space, target_function_space};
 
     auto [target_field_set, source_field_set] =
-        get_residual_field_wplus_wx_minus_x(forward_interpolation, approx_inverse_interpolation);
+        get_fields_and_residuals(forward_interpolation, approx_inverse_interpolation);
 
     if (eckit::mpi::comm().rank() == 0) {
         Log::info() << "Approx-inverse run: method=" << inverse_interpolation_config << ", test=" << test_name
@@ -250,6 +445,67 @@ void run_approx_inverse_case(const util::Config& global_config, const util::Conf
     make_gmsh_output(output_prefix + "_target.msh", target_field_set);
 }
 
+void run_cgls_comparison_case(const util::Config& global_config) {
+    if (!global_config.has("conjugate gradient least squares")) {
+        return;
+    }
+
+    const auto cg_config            = global_config.getSubConfiguration("conjugate gradient least squares");
+    const auto test_name            = cg_config.has("test name") ? cg_config.getString("test name") : "cgls_comparison";
+    const auto interpolation_config = cg_config.getSubConfiguration("interpolation");
+    const auto inverse_interpolation_config =
+        global_config.getSubConfiguration("inverse interpolation").set("scheme", interpolation_config);
+
+    const auto [source_function_space, target_function_space] = make_functionspaces(cg_config);
+    const auto forward_interpolation =
+        Interpolation{interpolation_config, target_function_space, source_function_space};
+    const auto approx_inverse_interpolation =
+        Interpolation{inverse_interpolation_config, source_function_space, target_function_space};
+
+    const auto max_iterations = cg_config.getInt("max iterations");
+    const auto tolerance      = cg_config.getDouble("tolerance");
+    const auto cgls_interpolation =
+        CglsInterpolation{forward_interpolation, approx_inverse_interpolation, max_iterations, tolerance};
+
+    cgls_interpolation.clear_diagnostics();
+
+    auto [target_field_set, source_field_set] = get_fields_and_residuals(forward_interpolation, cgls_interpolation);
+
+    if (eckit::mpi::comm().rank() == 0) {
+        Log::info() << "Approx-inverse run: method=" << inverse_interpolation_config << ", test=" << test_name
+                    << std::endl;
+
+        for (const auto& diagnostic : cgls_interpolation.diagnostics()) {
+            Log::info() << "CGLS convergence [" << diagnostic.output_field_name
+                        << "]: residual_norm=" << diagnostic.residual_norm
+                        << ", projected_residual_norm=" << diagnostic.projected_residual_norm
+                        << ", projected_residual_ratio=" << diagnostic.projected_residual_ratio
+                        << ", iterations=" << diagnostic.iterations << "/" << cgls_interpolation.max_iterations()
+                        << ", tolerance=" << cgls_interpolation.tolerance() << std::endl;
+        }
+    }
+
+    Log::info() << "Target functionspace statistics:" << std::endl;
+    for (const auto& field : target_field_set) {
+        log_field_stats(field.name(), field);
+    }
+    Log::info() << std::endl;
+
+    Log::info() << "Source functionspace statistics:" << std::endl;
+    for (const auto& field : source_field_set) {
+        log_field_stats(field.name(), field);
+    }
+    Log::info() << std::endl;
+
+    if (!global_config.getBool("write gmsh")) {
+        return;
+    }
+
+    const auto output_prefix = test_name + "_approx_inverse_" + inverse_interpolation_config.getString("type");
+    make_gmsh_output(output_prefix + "_source.msh", source_field_set);
+    make_gmsh_output(output_prefix + "_target.msh", target_field_set);
+}
+
 }  // namespace
 
 CASE("Run approx-inverse scenarios from YAML") {
@@ -260,6 +516,11 @@ CASE("Run approx-inverse scenarios from YAML") {
     for (const auto& run_config : runs) {
         run_approx_inverse_case(global_config, run_config);
     }
+}
+
+CASE("Run CGLS comparison from YAML") {
+    const auto global_config = get_test_config();
+    run_cgls_comparison_case(global_config);
 }
 
 CASE("plot inverse interpolation kernel") {

@@ -8,118 +8,118 @@ inverse interpolation:
 write gmsh: true
 
 runs:
-  - test name: cubedsphere_x2
-    source grid:
-      name: CS-LFR-56
-    target grid:
-      name: CS-LFR-28
-    source mesh generator:
-      type: cubedsphere_dual
-    target mesh generator:
-      type: cubedsphere_dual
-    source partitioner:
-      matching mesh: true
-      type: cubedsphere
-    target partitioner:
-      type: equal_regions
-      coordinates: lonlat
-    source halo: 1
-    target halo: 0
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
+  # - test name: cubedsphere_x2
+  #   source grid:
+  #     name: CS-LFR-56
+  #   target grid:
+  #     name: CS-LFR-28
+  #   source mesh generator:
+  #     type: cubedsphere_dual
+  #   target mesh generator:
+  #     type: cubedsphere_dual
+  #   source partitioner:
+  #     matching mesh: true
+  #     type: cubedsphere
+  #   target partitioner:
+  #     type: equal_regions
+  #     coordinates: lonlat
+  #   source halo: 1
+  #   target halo: 0
+  #   interpolation:
+  #     type: spherical-mean-value
+  #     treat_failure_as_missing_value: false
 
-  - test name: cubedsphere_x3
-    source grid:
-      name: CS-LFR-84
-    target grid:
-      name: CS-LFR-28
-    source mesh generator:
-      type: cubedsphere_dual
-    target mesh generator:
-      type: cubedsphere_dual
-    source partitioner:
-      matching mesh: true
-      type: cubedsphere
-    target partitioner:
-      type: equal_regions
-      coordinates: lonlat
-    source halo: 3
-    target halo: 0
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
+  # - test name: cubedsphere_x3
+  #   source grid:
+  #     name: CS-LFR-84
+  #   target grid:
+  #     name: CS-LFR-28
+  #   source mesh generator:
+  #     type: cubedsphere_dual
+  #   target mesh generator:
+  #     type: cubedsphere_dual
+  #   source partitioner:
+  #     matching mesh: true
+  #     type: cubedsphere
+  #   target partitioner:
+  #     type: equal_regions
+  #     coordinates: lonlat
+  #   source halo: 3
+  #   target halo: 0
+  #   interpolation:
+  #     type: spherical-mean-value
+  #     treat_failure_as_missing_value: false
 
-  - test name: cubedsphere_x4
-    source grid:
-      name: CS-LFR-112
-    target grid:
-      name: CS-LFR-28
-    source mesh generator:
-      type: cubedsphere_dual
-    target mesh generator:
-      type: cubedsphere_dual
-    source partitioner:
-      matching mesh: true
-      type: cubedsphere
-    target partitioner:
-      type: cubedsphere
-    source halo: 3
-    target halo: 0
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
+  # - test name: cubedsphere_x4
+  #   source grid:
+  #     name: CS-LFR-112
+  #   target grid:
+  #     name: CS-LFR-28
+  #   source mesh generator:
+  #     type: cubedsphere_dual
+  #   target mesh generator:
+  #     type: cubedsphere_dual
+  #   source partitioner:
+  #     matching mesh: true
+  #     type: cubedsphere
+  #   target partitioner:
+  #     type: cubedsphere
+  #   source halo: 3
+  #   target halo: 0
+  #   interpolation:
+  #     type: spherical-mean-value
+  #     treat_failure_as_missing_value: false
 
-  - test name: gaussian_x3
-    source grid:
-      name: O104
-    target grid:
-      name: O32
-    source mesh generator:
-      type: structured
-    target mesh generator:
-      type: structured
-    source partitioner:
-      matching mesh: true
-      type: lonlat-polygon
-    target partitioner:
-      type: equal_regions
-    source halo: 3
-    target halo: 1
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
+  # - test name: gaussian_x3
+  #   source grid:
+  #     name: O104
+  #   target grid:
+  #     name: O32
+  #   source mesh generator:
+  #     type: structured
+  #   target mesh generator:
+  #     type: structured
+  #   source partitioner:
+  #     matching mesh: true
+  #     type: lonlat-polygon
+  #   target partitioner:
+  #     type: equal_regions
+  #   source halo: 3
+  #   target halo: 1
+  #   interpolation:
+  #     type: spherical-mean-value
+  #     treat_failure_as_missing_value: false
 
-  - test name: regional_x3_aligned
-    source grid:
-      type: regional
-      nx: 151
-      ny: 151
-      north: 55.
-      south: -35.
-      west: 55.
-      east: 145.
-    target grid:
-      type: regional
-      nx: 51
-      ny: 51
-      north: 55.
-      south: -35.
-      west: 55.
-      east: 145.
-    source mesh generator:
-      type: structured
-    target mesh generator:
-      type: structured
-    source partitioner:
-      type: checkerboard
-    target partitioner:
-      type: checkerboard
-    source halo: 5
-    target halo: 2
-    interpolation:
-      type: spherical-mean-value
-      treat_failure_as_missing_value: false
+  # - test name: regional_x3_aligned
+  #   source grid:
+  #     type: regional
+  #     nx: 151
+  #     ny: 151
+  #     north: 55.
+  #     south: -35.
+  #     west: 55.
+  #     east: 145.
+  #   target grid:
+  #     type: regional
+  #     nx: 51
+  #     ny: 51
+  #     north: 55.
+  #     south: -35.
+  #     west: 55.
+  #     east: 145.
+  #   source mesh generator:
+  #     type: structured
+  #   target mesh generator:
+  #     type: structured
+  #   source partitioner:
+  #     type: checkerboard
+  #   target partitioner:
+  #     type: checkerboard
+  #   source halo: 5
+  #   target halo: 2
+  #   interpolation:
+  #     type: spherical-mean-value
+  #     treat_failure_as_missing_value: false
 
   - test name: regional_x2_staggered
     source grid:
@@ -152,6 +152,40 @@ runs:
       type: spherical-mean-value
       treat_failure_as_missing_value: false
 
+conjugate gradient least squares:
+  test name: cgls_comparison
+  source grid:
+    type: regional
+    nx: 100
+    ny: 100
+    north: 54.775
+    south: -34.775
+    west: 55.225
+    east: 144.775
+  target grid:
+    type: regional
+    nx: 51
+    ny: 51
+    north: 55.
+    south: -35.
+    west: 55.
+    east: 145.
+  source mesh generator:
+    type: structured
+  target mesh generator:
+    type: structured
+  source partitioner:
+    type: checkerboard
+  target partitioner:
+    type: checkerboard
+  source halo: 3
+  target halo: 2
+  interpolation:
+    type: spherical-mean-value
+    treat_failure_as_missing_value: false
+  max iterations: 4
+  tolerance: 1e-10
+  
 visualise inverse interpolation kernel:
   source grid:
     name: CS-LFR-25

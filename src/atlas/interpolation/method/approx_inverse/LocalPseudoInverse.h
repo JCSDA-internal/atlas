@@ -15,19 +15,28 @@ namespace interpolation {
 namespace method {
 
 
-/// @brief Approximate inverse interpolation via local pseudoinverse.
+/// @brief Compact-support approximate inverse interpolation via local pseudoinverses.
 ///
-/// Groups the rows of the ancillary forward interpolation matrix by their
-/// set of non-zero column indices (i.e. rows that share the same set of
-/// source stencil points are grouped together).  For each group a dense
-/// sub-matrix is formed and its Moore–Penrose pseudoinverse is computed
-/// using Eigen's complete orthogonal decomposition.  The resulting
-/// sub-matrix inverses are assembled into the global inverse interpolation
-/// matrix.
+/// This method builds an approximate left inverse of the forward interpolation
+/// operator by working stencil-by-stencil rather than globally. Rows of the
+/// ancillary forward interpolation matrix are first grouped by their identical
+/// sparsity pattern (that is, by the set of non-zero source columns they touch).
+/// For each group a dense sub-matrix is formed, its Moore-Penrose pseudoinverse
+/// is computed with Eigen's complete orthogonal decomposition, and the result
+/// is truncated back into the original compact-support pattern.
 ///
-/// A warning is emitted (on MPI rank 0) when any sub-matrix has fewer rows
-/// than columns (underdetermined system), as the pseudoinverse may be
-/// inaccurate in that case.
+/// The resulting operator is sparse and local by construction. On each block,
+/// and provided that the block is not underdetermined, the construction behaves
+/// like an exact left inverse for the corresponding forward stencil. In the
+/// underdetermined case the pseudoinverse is still formed, but it is only an
+/// approximate inverse and a warning is emitted during assembly.
+///
+/// After each block pseudoinverse is assembled, the block is scaled so that its
+/// Frobenius norm is proportional to @f$\sqrt{m/n}@f$, where @f$m@f$ is the
+/// number of rows in the block and @f$n@f$ is the number of columns. This
+/// provides a simple blockwise energy normalisation and helps keep the assembled
+/// rows visually coherent when a block spans mixed element types such as points,
+/// lines, triangles, and quadrilaterals.
 ///
 /// Registered under the factory key @c "local-pseudoinverse".
 class LocalPseudoInverse : public ApproxInverse {

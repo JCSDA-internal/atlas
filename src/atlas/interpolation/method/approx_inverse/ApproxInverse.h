@@ -42,6 +42,7 @@ namespace method {
 /// the specific inversion strategy (e.g. binning or local pseudoinverse).
 class ApproxInverse : public Method {
 public:
+    using Method::do_setup;
     using Value               = double;
     using Index               = int;
     using Triplet             = linalg::Triplet<Value, Index>;
@@ -90,10 +91,6 @@ private:
     SparseMatrixStorage normalise_rows(const SparseMatrixStorage& inverse_interp_matrix) const;
 
     void do_setup(const FunctionSpace& source, const FunctionSpace& target) override;
-    void do_setup(const Grid& source, const Grid& target, const Cache&) override;
-    void do_setup(const FunctionSpace& source, const FunctionSpace& target, const Cache&) override;
-
-    
     
     eckit::LocalConfiguration interp_ancillary_scheme_{};
 

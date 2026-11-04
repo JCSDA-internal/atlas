@@ -909,6 +909,8 @@ util/CGALSphericalTriangulation.h
 util/CGALSphericalTriangulation.cc
 util/detail/Cache.h
 util/detail/KDTree.h
+util/detail/KDTree_nanoflann.h
+util/detail/nanoflann.hpp
 util/detail/filesystem.cc
 util/detail/filesystem.h
 util/function/MDPI_functions.h

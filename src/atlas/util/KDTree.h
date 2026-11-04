@@ -15,6 +15,7 @@
 #include "atlas/util/Geometry.h"
 #include "atlas/util/ObjectHandle.h"
 #include "atlas/util/detail/KDTree.h"
+#include "atlas/util/detail/KDTree_nanoflann.h"
 
 namespace atlas {
 namespace util {

@@ -14,6 +14,8 @@
 #include <numeric>
 #include <optional>
 #include <random>
+#include <set>
+#include <thread>
 #include <vector>
 
 #include "atlas/grid.h"
@@ -527,6 +529,215 @@ CASE("test IndexKDTree 2D vs 3D") {
 //     EXPECT_EQ(neighbours_unit,  expected_neighbours);
 //     EXPECT_EQ(neighbours_earth, expected_neighbours);
 // }
+
+//------------------------------------------------------------------------------------------------
+// Tests comparing KDTree_nanoflann directly against the eckit backend (KDTreeMemory), on raw 2D/3D points
+
+namespace {
+template <typename PointT>
+using NanoflannImpl = util::detail::KDTree_nanoflann<idx_t, PointT>;
+template <typename PointT>
+using EckitImpl = util::detail::KDTreeMemory<idx_t, PointT>;
+
+template <typename PointT>
+std::vector<PointT> random_points(size_t n, unsigned seed) {
+    std::mt19937 gen(seed);
+    std::uniform_real_distribution<> dist(-1., 1.);
+    std::vector<PointT> points(n);
+    for (auto& p : points) {
+        for (size_t d = 0; d < PointT::DIMS; ++d) {
+            p.data()[d] = dist(gen);
+        }
+    }
+    return points;
+}
+
+std::vector<idx_t> iota_payloads(size_t n) {
+    std::vector<idx_t> payloads(n);
+    std::iota(payloads.begin(), payloads.end(), idx_t(0));
+    return payloads;
+}
+
+template <typename ValueList>
+std::set<idx_t> payload_set(const ValueList& list) {
+    std::set<idx_t> s;
+    for (const auto& v : list) {
+        s.insert(v.payload());
+    }
+    return s;
+}
+
+template <typename PointT>
+void compare_with_eckit(size_t npoints, size_t nqueries) {
+    auto points   = random_points<PointT>(npoints, 1);
+    auto payloads = iota_payloads(npoints);
+    auto queries  = random_points<PointT>(nqueries, 2);
+
+    util::KDTree<idx_t, PointT> nf(new NanoflannImpl<PointT>());
+    util::KDTree<idx_t, PointT> ek(new EckitImpl<PointT>());
+    nf.build(points, payloads);
+    ek.build(points, payloads);
+    EXPECT_EQ(nf.size(), ek.size());
+
+    const size_t k      = 7;
+    const double radius = 0.2;
+    for (const auto& q : queries) {
+        EXPECT_APPROX_EQ(nf.closestPoint(q).distance(), ek.closestPoint(q).distance(), 1.e-14);
+
+        auto nf_knn = nf.closestPoints(q, k);
+        auto ek_knn = ek.closestPoints(q, k);
+        EXPECT_EQ(nf_knn.size(), ek_knn.size());
+        for (size_t i = 0; i < std::min(nf_knn.size(), ek_knn.size()); ++i) {
+            EXPECT_APPROX_EQ(nf_knn[i].distance(), ek_knn[i].distance(), 1.e-14);
+            EXPECT_EQ(nf_knn[i].point(), points[nf_knn[i].payload()]);
+            if (i > 0) {
+                EXPECT(nf_knn[i - 1].distance() <= nf_knn[i].distance());
+            }
+        }
+
+        auto nf_sphere = nf.closestPointsWithinRadius(q, radius);
+        auto ek_sphere = ek.closestPointsWithinRadius(q, radius);
+        EXPECT_EQ(payload_set(nf_sphere), payload_set(ek_sphere));
+        for (size_t i = 1; i < nf_sphere.size(); ++i) {
+            EXPECT(nf_sphere[i - 1].distance() <= nf_sphere[i].distance());
+        }
+    }
+}
+}  // namespace
+
+CASE("KDTree_nanoflann: results match eckit backend (3D)") {
+    compare_with_eckit<Point3>(5000, 500);
+}
+
+CASE("KDTree_nanoflann: results match eckit backend (2D)") {
+    compare_with_eckit<Point2>(5000, 500);
+}
+
+CASE("KDTree_nanoflann: closestPointsWithinRadius includes points at exactly the radius, like eckit") {
+    std::vector<Point3> points{{0., 0., 0.}, {1., 0., 0.}, {2., 0., 0.}, {0., 0.5, 0.}};
+    auto payloads = iota_payloads(points.size());
+    util::KDTree<idx_t, Point3> nf(new NanoflannImpl<Point3>());
+    util::KDTree<idx_t, Point3> ek(new EckitImpl<Point3>());
+    nf.build(points, payloads);
+    ek.build(points, payloads);
+    auto expected = std::set<idx_t>{0, 1, 3};
+    EXPECT_EQ(payload_set(nf.closestPointsWithinRadius(Point3{0., 0., 0.}, 1.)), expected);
+    EXPECT_EQ(payload_set(ek.closestPointsWithinRadius(Point3{0., 0., 0.}, 1.)), expected);
+    auto sphere = nf.closestPointsWithinRadius(Point3{0., 0., 0.}, 1.);
+    EXPECT_EQ(sphere.front().payload(), 0);
+    EXPECT_EQ(sphere.back().payload(), 1);
+    EXPECT_EQ(sphere.back().distance(), 1.);
+}
+
+CASE("KDTree_nanoflann: insert without reserve is immediately queryable (lazy index rebuild)") {
+    auto points = random_points<Point3>(1000, 3);
+    util::KDTree<idx_t, Point3> nf(new NanoflannImpl<Point3>());
+    util::KDTree<idx_t, Point3> ek(new EckitImpl<Point3>());
+    EXPECT(nf.empty());
+    for (size_t i = 0; i < points.size(); ++i) {
+        nf.insert(points[i], idx_t(i));
+        ek.insert(points[i], idx_t(i));
+        EXPECT_EQ(nf.size(), i + 1);
+        if (i % 100 == 0) {
+            // query of a just-inserted point must find it
+            auto nn = nf.closestPoint(points[i]);
+            EXPECT_EQ(nn.payload(), idx_t(i));
+            EXPECT_EQ(nn.distance(), 0.);
+        }
+    }
+    auto q = Point3{0.1, 0.2, 0.3};
+    EXPECT_EQ(nf.closestPoints(q, 10).payloads(), ek.closestPoints(q, 10).payloads());
+}
+
+CASE("KDTree_nanoflann: concurrent queries trigger a single safe lazy rebuild") {
+    auto points = random_points<Point3>(20000, 4);
+    util::KDTree<idx_t, Point3> nf(new NanoflannImpl<Point3>());
+    for (size_t i = 0; i < points.size(); ++i) {
+        nf.insert(points[i], idx_t(i));
+    }
+    // Index is stale; several threads trigger the lazy rebuild simultaneously
+    const size_t nthreads = 8;
+    std::vector<int> ok(nthreads, 0);
+    std::vector<std::thread> threads;
+    for (size_t t = 0; t < nthreads; ++t) {
+        threads.emplace_back([&, t]() {
+            bool good = true;
+            for (size_t i = t; i < points.size(); i += 97) {
+                good = good && nf.closestPoint(points[i]).payload() == idx_t(i);
+            }
+            ok[t] = good;
+        });
+    }
+    for (auto& th : threads) {
+        th.join();
+    }
+    for (size_t t = 0; t < nthreads; ++t) {
+        EXPECT(ok[t]);
+    }
+}
+
+CASE("KDTree_nanoflann: empty tree and large k") {
+    util::KDTree<idx_t, Point3> nf(new NanoflannImpl<Point3>());
+    EXPECT_THROWS_AS(nf.closestPoint(Point3{0., 0., 0.}), eckit::AssertionFailed);
+    EXPECT_THROWS_AS(nf.closestPoints(Point3{0., 0., 0.}, 3), eckit::AssertionFailed);
+    auto points = random_points<Point3>(100, 5);
+    nf.build(points, iota_payloads(points.size()));
+    // k larger than size is clamped; k larger than the internal stack buffer uses the heap
+    EXPECT_EQ(nf.closestPoints(Point3{0., 0., 0.}, 1000).size(), points.size());
+    EXPECT_EQ(nf.closestPoints(Point3{0., 0., 0.}, 50).size(), 50);
+}
+
+CASE("KDTree_nanoflann: reserve/insert/build semantics identical to eckit backend") {
+    auto check = [](IndexKDTree& search) {
+        auto& lonlat   = test_lonlat();
+        auto& payloads = test_payloads();
+        search.reserve(7);
+        for (size_t i = 0; i < 7; ++i) {
+            search.insert(lonlat[i], payloads[i]);
+        }
+        // deferred values are not counted, and queries throw, until build()
+        EXPECT_EQ(search.size(), 0);
+        EXPECT_THROWS_AS(search.closestPoint(PointLonLat{0., 0.}), eckit::AssertionFailed);
+        search.build();
+        EXPECT_EQ(search.size(), 7);
+        validate(search);
+    };
+    IndexKDTree ek(new util::detail::KDTreeMemory<idx_t, Point3>(geometry()));
+    IndexKDTree nf(new util::detail::KDTree_nanoflann<idx_t, Point3>(geometry()));
+    check(ek);
+    check(nf);
+}
+
+CASE("KDTree_nanoflann: inserts before and after reserve are all kept") {
+    // Note: the eckit backend (KDTreeMemory) loses the values inserted before reserve() in this scenario,
+    // because eckit::KDTree::build() replaces the tree root. Only nanoflann is tested here.
+    IndexKDTree search(new util::detail::KDTree_nanoflann<idx_t, Point3>(geometry()));
+    auto& lonlat   = test_lonlat();
+    auto& payloads = test_payloads();
+    for (size_t i = 0; i < 3; ++i) {
+        search.insert(lonlat[i], payloads[i]);
+    }
+    EXPECT_EQ(search.size(), 3);
+    EXPECT_NO_THROW(search.closestPoint(PointLonLat{0., 0.}));
+    search.reserve(4);
+    for (size_t i = 3; i < 7; ++i) {
+        search.insert(lonlat[i], payloads[i]);
+    }
+    EXPECT_EQ(search.size(), 3);
+    EXPECT_THROWS_AS(search.closestPoint(PointLonLat{0., 0.}), eckit::AssertionFailed);
+    search.build();
+    EXPECT_EQ(search.size(), 7);
+    validate(search);
+    EXPECT_EQ(search.closestPoints(PointLonLat{89.9, 44.9}, 7).size(), 7);
+}
+
+CASE("KDTree_nanoflann: footprint and size") {
+    IndexKDTree search(new util::detail::KDTree_nanoflann<idx_t, Point3>(geometry()));
+    search.build(test_lonlat(), test_payloads());
+    EXPECT_EQ(search.size(), 7);
+    // footprint covers the stored values (point + payload) plus the index
+    EXPECT(search.footprint() >= 7 * (sizeof(Point3) + sizeof(idx_t)));
+}
 
 //------------------------------------------------------------------------------------------------
 

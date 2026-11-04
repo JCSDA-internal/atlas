@@ -21,9 +21,24 @@ namespace util {
 
 //------------------------------------------------------------------------------------------------------
 
+namespace detail {
+/// Default k-d tree implementation, selected at build time with the NANOFLANN feature (-DENABLE_NANOFLANN=ON)
+#if ATLAS_HAVE_NANOFLANN
+template <typename PayloadT, typename PointT>
+using KDTreeDefault = KDTree_nanoflann<PayloadT, PointT>;
+#else
+template <typename PayloadT, typename PointT>
+using KDTreeDefault = KDTreeMemory<PayloadT, PointT>;
+#endif
+}  // namespace detail
+
+//------------------------------------------------------------------------------------------------------
+
 /// @brief k-dimensional tree constructable both with 2D (lon,lat) points as with 3D (x,y,z) points
 ///
-/// The implementation is based on eckit::KDTreeMemory with 3D (x,y,z) points.
+/// The default implementation is based on eckit::KDTreeMemory, or on nanoflann when Atlas is built with
+/// -DENABLE_NANOFLANN=ON. A specific implementation can be chosen by constructing from a
+/// `new detail::KDTreeMemory<Payload,Point>(...)` or `new detail::KDTree_nanoflann<Payload,Point>(...)`.
 /// 2D points (lon,lat) are converted when needed to 3D during insertion, and during search, so that
 /// a search always happens with 3D cartesian points.
 ///
@@ -47,15 +62,6 @@ namespace util {
 /// @endcode
 /// The variable `neighbours` is now a container of indices (the payloads) of the 4 nearest points
 
-// #define ATLAS_HAVE_NANOFLANN 1
-#ifdef ATLAS_HAVE_NANOFLANN
-template <typename PayloadT, typename PointT>
-using DefaultTreeImpl = detail::KDTree_nanoflann<PayloadT, PointT>;
-#else
-template <typename PayloadT, typename PointT>
-using DefaultTreeImpl = detail::KDTreeMemory<PayloadT, PointT>;
-#endif
-
 template <typename PayloadT, typename PointT = Point3>
 class KDTree : public ObjectHandle<detail::KDTreeBase<PayloadT, PointT>> {
 public:
@@ -75,10 +81,10 @@ public:
     // Constructors
 
     /// @brief Construct an empty kd-tree with default geometry (Earth)
-    KDTree(): Handle(new DefaultTreeImpl<Payload, Point>()) {}
+    KDTree(): Handle(new detail::KDTreeDefault<Payload, Point>()) {}
 
     /// @brief Construct an empty kd-tree with custom geometry
-    KDTree(const Geometry& geometry): Handle(new DefaultTreeImpl<Payload, Point>(geometry)) {}
+    KDTree(const Geometry& geometry): Handle(new detail::KDTreeDefault<Payload, Point>(geometry)) {}
 
     /// @brief Construct an empty kd-tree with custom geometry
     KDTree(const eckit::Configuration& config):

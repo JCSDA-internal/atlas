@@ -23,6 +23,7 @@
 #include "atlas/grid.h"
 #include "atlas/interpolation/element/Quad3D.h"
 #include "atlas/interpolation/element/Triag3D.h"
+#include "atlas/interpolation/method/ElementKDTree.h"
 #include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/Ray.h"
 #include "atlas/linalg/sparse/MakeEckitSparseMatrix.h"
@@ -237,7 +238,7 @@ void FiniteElement::setup(const FunctionSpace& source) {
     config.set("flatten_virtual_elements", false);
     Field cell_centres = mesh::actions::BuildCellCentres(config)(meshSource);
 
-    std::unique_ptr<ElemIndex3> eTree(create_element_kdtree(meshSource, cell_centres));
+    const util::IndexKDTree3D eTree = build_element_kdtree(meshSource, cell_centres);
 
     trace_setup_source.stop();
 
@@ -279,12 +280,12 @@ void FiniteElement::setup(const FunctionSpace& source) {
         Log::debug() << "k-d tree: search radius = " << search_radius/1000. << " km" << std::endl;
     }
     auto find_element_candidates_in_search_radius = [&eTree,&search_radius](const PointXYZ& p) {
-        return eTree->findInSphere(p, search_radius);
+        return eTree.closestPointsWithinRadius(p, search_radius);
     };
     auto find_k_nearest_element_candidates = [&eTree](const PointXYZ& p, size_t k) {
-        return eTree->kNearestNeighbours(p, k);
+        return eTree.closestPoints(p, k);
     };
-    auto try_interpolate_with_element_candidates = [&insert_triplets, this](idx_t n, const ElemIndex3::NodeList& element_candidates) -> bool {
+    auto try_interpolate_with_element_candidates = [&insert_triplets, this](idx_t n, const util::IndexKDTree3D::ValueList& element_candidates) -> bool {
         if (element_candidates.empty()) {
             return false;
         }
@@ -372,7 +373,7 @@ struct ElementEdge {
     }
 };
 
-Method::Triplets FiniteElement::projectPointToElements(size_t ip, const ElemIndex3::NodeList& elems) const {
+Method::Triplets FiniteElement::projectPointToElements(size_t ip, const util::IndexKDTree3D::ValueList& elems) const {
     ATLAS_ASSERT(elems.begin() != elems.end());
 
     const size_t inp_points = icoords_->shape(0);
@@ -385,8 +386,8 @@ Method::Triplets FiniteElement::projectPointToElements(size_t ip, const ElemInde
     const Vector3D p{(*ocoords_)(ip, size_t(0)), (*ocoords_)(ip, size_t(1)), (*ocoords_)(ip, size_t(2))};
     ElementEdge edge;
     idx_t single_point;
-    for (ElemIndex3::NodeList::const_iterator itc = elems.begin(); itc != elems.end(); ++itc) {
-        const idx_t elem_id = idx_t((*itc).value().payload());
+    for (auto itc = elems.begin(); itc != elems.end(); ++itc) {
+        const idx_t elem_id = itc->payload();
         ATLAS_ASSERT(elem_id < connectivity_->rows());
 
         const idx_t nb_cols = [&]() {

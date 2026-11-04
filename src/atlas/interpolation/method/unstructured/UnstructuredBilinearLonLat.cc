@@ -20,6 +20,7 @@
 #include "atlas/grid.h"
 #include "atlas/interpolation/element/Quad2D.h"
 #include "atlas/interpolation/element/Triag2D.h"
+#include "atlas/interpolation/method/ElementKDTree.h"
 #include "atlas/interpolation/method/MethodFactory.h"
 #include "atlas/interpolation/method/Ray.h"
 #include "atlas/linalg/sparse/MakeEckitSparseMatrix.h"
@@ -232,7 +233,7 @@ void UnstructuredBilinearLonLat::setup(const FunctionSpace& source) {
     config.set("flatten_virtual_elements", false);
     Field cell_centres = mesh::actions::BuildCellCentres(config)(meshSource);
 
-    std::unique_ptr<ElemIndex3> eTree(create_element_kdtree(meshSource, cell_centres));
+    const util::IndexKDTree3D eTree = build_element_kdtree(meshSource, cell_centres);
 
     trace_setup_source.stop();
 
@@ -265,9 +266,9 @@ void UnstructuredBilinearLonLat::setup(const FunctionSpace& source) {
         return PointXYZ{(*oxyz_)(ip, 0), (*oxyz_)(ip, 1), (*oxyz_)(ip, 2)};
     };
     auto find_k_nearest_element_candidates = [&eTree](const PointXYZ& p, size_t k) {
-        return eTree->kNearestNeighbours(p, k);
+        return eTree.closestPoints(p, k);
     };
-    auto try_interpolate_with_element_candidates = [&insert_triplets, this](idx_t n, const ElemIndex3::NodeList& element_candidates) -> bool {
+    auto try_interpolate_with_element_candidates = [&insert_triplets, this](idx_t n, const util::IndexKDTree3D::ValueList& element_candidates) -> bool {
         if (element_candidates.empty()) {
             return false;
         }
@@ -322,7 +323,7 @@ void UnstructuredBilinearLonLat::setup(const FunctionSpace& source) {
     setMatrix(out_npts, inp_npts, weights_triplets);
 }
 
-Method::Triplets UnstructuredBilinearLonLat::projectPointToElements(size_t ip, const ElemIndex3::NodeList& elems) const {
+Method::Triplets UnstructuredBilinearLonLat::projectPointToElements(size_t ip, const util::IndexKDTree3D::ValueList& elems) const {
     ATLAS_ASSERT(elems.begin() != elems.end());
 
     const size_t inp_points = ilonlat_->shape(0);
@@ -375,8 +376,8 @@ Method::Triplets UnstructuredBilinearLonLat::projectPointToElements(size_t ip, c
     };
 
 
-    for (ElemIndex3::NodeList::const_iterator itc = elems.begin(); itc != elems.end(); ++itc) {
-        const idx_t elem_id = idx_t((*itc).value().payload());
+    for (auto itc = elems.begin(); itc != elems.end(); ++itc) {
+        const idx_t elem_id = itc->payload();
         ATLAS_ASSERT(elem_id < connectivity_->rows());
 
         const idx_t nb_cols = connectivity_->cols(elem_id);
@@ -486,7 +487,7 @@ Method::Triplets UnstructuredBilinearLonLat::projectPointToElements(size_t ip, c
         // Crude inverse distance weighting to catch cells that are difficult
         // to identify and interpolate in a lon/lat projection, near the north
         // pole
-        const idx_t elem_id = idx_t((*elems.begin()).value().payload());
+        const idx_t elem_id = elems.front().payload();
         for (size_t i = 0; i < connectivity_->cols(elem_id); ++i) {
             idx[i] = (*connectivity_)(elem_id, i);
             triplets.emplace_back(ip, idx[i], inv_dist_w[i]);

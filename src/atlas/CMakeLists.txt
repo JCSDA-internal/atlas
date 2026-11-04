@@ -654,6 +654,8 @@ interpolation/method/Method.cc
 interpolation/method/Method.h
 interpolation/method/MethodFactory.cc
 interpolation/method/MethodFactory.h
+interpolation/method/ElementKDTree.cc
+interpolation/method/ElementKDTree.h
 interpolation/method/PointIndex3.cc
 interpolation/method/PointIndex3.h
 interpolation/method/PointIndex2.cc

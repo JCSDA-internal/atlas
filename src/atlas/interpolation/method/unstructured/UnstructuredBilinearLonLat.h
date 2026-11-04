@@ -15,8 +15,8 @@
 
 #include "atlas/array/ArrayView.h"
 #include "atlas/functionspace/FunctionSpace.h"
-#include "atlas/interpolation/method/PointIndex3.h"
 #include "atlas/mesh/Elements.h"
+#include "atlas/util/KDTree.h"
 
 namespace atlas {
 namespace interpolation {
@@ -51,7 +51,7 @@ protected:
    * point to the nearest element(s), returning the (normalized) interpolation
    * weights
    */
-    Triplets projectPointToElements(size_t ip, const ElemIndex3::NodeList& elems) const;
+    Triplets projectPointToElements(size_t ip, const util::IndexKDTree3D::ValueList& elems) const;
 
     virtual const FunctionSpace& source() const override { return source_; }
     virtual const FunctionSpace& target() const override { return target_; }
